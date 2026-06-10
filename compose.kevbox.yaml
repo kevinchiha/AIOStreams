@@ -1,3 +1,32 @@
+# Shared env for the MediaFusion api + worker (same image, two commands).
+# Sources: our own Prowlarr + Zilean only. NOTE: the IS_SCRAP_FROM_* flags gate
+# only the LIVE search path; the image also seeds always-on spider/DMM cron rows
+# in Postgres — Task 9 Step 3 disables those after first boot. No public-site
+# scraping happens, which is why browserless/byparr containers are absent here.
+x-mediafusion-env: &mediafusion-env
+  HOST_URL: ${KEVBOX_MEDIAFUSION_URL}
+  POSTER_HOST_URL: ${KEVBOX_MEDIAFUSION_URL}
+  CONTACT_EMAIL: admin@example.com   # sentinel MediaFusion hides; never a personal address
+  SECRET_KEY: ${MEDIAFUSION_SECRET_KEY}
+  API_PASSWORD: ${MEDIAFUSION_API_PASSWORD}
+  POSTGRES_URI: postgresql://mediafusion:${MEDIAFUSION_POSTGRES_PASSWORD}@mediafusion-postgres:5432/mediafusion
+  REDIS_URL: redis://mediafusion-redis:6379
+  IS_SCRAP_FROM_PROWLARR: "true"
+  PROWLARR_URL: http://prowlarr:9696
+  PROWLARR_API_KEY: ${PROWLARR_API_KEY}
+  PROWLARR_LIVE_TITLE_SEARCH: "true"   # inert for kevbox traffic: useCachedResultsOnly → live_search_streams=false
+  IS_SCRAP_FROM_PUBLIC_INDEXERS: "false"
+  IS_SCRAP_FROM_PUBLIC_USENET_INDEXERS: "false"
+  IS_SCRAP_FROM_TORRENTIO: "false"
+  IS_SCRAP_FROM_MEDIAFUSION: "false"
+  IS_SCRAP_FROM_ZILEAN: "true"
+  ZILEAN_URL: http://zilean:8181
+  # Belt-and-braces: the seeded hourly dmm_hashlist cron ignores IS_SCRAP_* flags;
+  # zero commit budgets make its handler no-op even if the row is ever re-enabled.
+  DMM_HASHLIST_COMMITS_PER_RUN: "0"
+  DMM_HASHLIST_BACKFILL_COMMITS_PER_RUN: "0"
+  ENABLE_RATE_LIMIT: "false"
+
 services:
   kevbox:
     build: .
@@ -26,6 +55,208 @@ services:
       options:
         max-size: 10m
         max-file: '3'
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - prowlarr-config:/config
+    ports:
+      - 127.0.0.1:9696:9696   # UI/API via SSH tunnel only; kevbox + mediafusion use http://prowlarr:9696
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    mem_limit: 1g          # each concurrent CF solve spawns a Chromium (~0.2-0.5 GiB)
+    environment:
+      - LOG_LEVEL=info
+    # No host port: only Prowlarr consumes it, at http://flaresolverr:8191
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  zilean:
+    image: ipromknight/zilean:v3.5.0
+    container_name: zilean
+    restart: unless-stopped
+    mem_limit: 3g          # DMM import spikes ~2 GiB RSS; a contained OOM restarts + resumes
+    tty: true
+    environment:
+      Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
+      Zilean__Dmm__EnableScraping: "true"
+      Zilean__Torznab__EnableEndpoint: "true"      # AIOStreams' zilean preset consumes <url>/torznab/api
+      Zilean__Imdb__EnableImportMatching: "true"   # required: AIOStreams prefers imdbid= torznab searches
+      Zilean__Imdb__UseLucene: "false"             # true would cost ~3 GB extra RAM during resyncs
+      Zilean__Imdb__UseAllCores: "false"
+      Zilean__Imdb__NumberOfCores: "2"
+      Zilean__EnableDashboard: "false"
+    volumes:
+      - zilean-data:/app/data
+      - zilean-tmp:/tmp
+    ports:
+      - 127.0.0.1:8181:8181   # ops/debug via SSH tunnel; kevbox + mediafusion use http://zilean:8181
+    healthcheck:
+      test: curl --connect-timeout 10 --silent --show-error --fail http://localhost:8181/healthchecks/ping
+      timeout: 60s
+      interval: 30s
+      retries: 10
+    depends_on:
+      zilean-postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  zilean-postgres:
+    image: postgres:17-alpine
+    container_name: zilean-postgres
+    restart: unless-stopped
+    mem_limit: 2g
+    shm_size: 2g           # upstream compose value; tmpfs is lazily allocated (costs nothing idle)
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ZILEAN_POSTGRES_PASSWORD}
+      POSTGRES_DB: zilean
+    volumes:
+      - zilean-postgres-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  mediafusion:
+    image: mhdzumair/mediafusion:6.0.0-beta.21
+    container_name: mediafusion
+    restart: unless-stopped
+    mem_limit: 1g
+    environment: *mediafusion-env
+    ports:
+      - 127.0.0.1:8000:8000   # ops/debug only; kevbox reaches it at http://mediafusion:8000
+    depends_on:
+      mediafusion-postgres:
+        condition: service_healthy
+      mediafusion-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 1m
+      timeout: 10s
+      retries: 5
+      start_period: 2m        # boot only runs sqlx migrations (IMDb import = Task 9 worker job)
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  mediafusion-worker:
+    image: mhdzumair/mediafusion:6.0.0-beta.21
+    container_name: mediafusion-worker
+    command: ["/usr/local/bin/mediafusion-worker"]
+    restart: unless-stopped
+    mem_limit: 2g          # runs the (manually triggered) IMDb import + all scrape jobs
+    environment: *mediafusion-env
+    depends_on:
+      mediafusion-postgres:
+        condition: service_healthy
+      mediafusion-redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  mediafusion-postgres:
+    image: postgres:18-alpine
+    container_name: mediafusion-postgres
+    restart: unless-stopped
+    shm_size: 512mb        # upstream compose value
+    environment:
+      POSTGRES_USER: mediafusion
+      POSTGRES_PASSWORD: ${MEDIAFUSION_POSTGRES_PASSWORD}
+      POSTGRES_DB: mediafusion
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"  # MF's admin slow-query routes need it
+    volumes:
+      - mediafusion-postgres-data:/var/lib/postgresql
+      - ./deploy/mediafusion-postgres-init.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediafusion -d mediafusion"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  mediafusion-redis:
+    image: redis:7-alpine
+    container_name: mediafusion-redis
+    restart: unless-stopped
+    # No maxmemory/eviction policy: Redis is MediaFusion's task queue —
+    # evicting queue keys under memory pressure would silently drop jobs.
+    # No requirepass: single-tenant compose network, no host port (vendor default).
+    command: redis-server --appendonly yes --save 60 1
+    volumes:
+      - mediafusion-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+volumes:
+  prowlarr-config:
+  zilean-data:
+  zilean-tmp:
+  zilean-postgres-data:
+  mediafusion-postgres-data:
+  mediafusion-redis-data:
 
 networks:
   default:
