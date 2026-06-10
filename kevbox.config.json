@@ -203,11 +203,6 @@
   "precacheSelector": "count(cached(streams)) == 0 ? uncached(streams) : []",
   "services": [
     {
-      "id": "debridge",
-      "enabled": false,
-      "credentials": {}
-    },
-    {
       "id": "realdebrid",
       "enabled": false,
       "credentials": {}

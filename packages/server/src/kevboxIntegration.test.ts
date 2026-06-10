@@ -8,18 +8,31 @@ import { fileURLToPath } from 'node:url';
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverEntry = path.join(serverDir, 'dist/server.js');
 const fixture = path.join(serverDir, 'test-fixtures/kevbox.fixture.json');
+const badFixture = path.join(
+  serverDir,
+  'test-fixtures/kevbox.badservice.fixture.json'
+);
+// The real shipped template, two dirs up from packages/server.
+const repoTemplate = path.resolve(serverDir, '../../kevbox.config.json');
 const built = existsSync(serverEntry);
 
 const PORT = 3899;
 const BASE = `http://127.0.0.1:${PORT}`;
 const KEY = 'dummykey12345';
 
+// Placeholder secrets so the real template's ${KEVBOX_*} vars resolve at load.
+const DUMMY_KEVBOX_ENV = {
+  KEVBOX_MEDIAFLOW_URL: 'https://mediaflow.example.com',
+  KEVBOX_MEDIAFLOW_PASSWORD: 'dummy',
+  KEVBOX_RPDB_KEY: 'dummy',
+};
+
 let child: ChildProcess | undefined;
 
-const waitForHealth = async (): Promise<void> => {
+const waitForHealth = async (base: string): Promise<void> => {
   for (let i = 0; i < 60; i++) {
     try {
-      const res = await fetch(`${BASE}/api/v1/health`);
+      const res = await fetch(`${base}/api/v1/health`);
       if (res.ok) return;
     } catch {
       // not up yet
@@ -45,7 +58,7 @@ describe.skipIf(!built)('kevbox routes (built server)', () => {
       },
       stdio: 'ignore',
     });
-    await waitForHealth();
+    await waitForHealth(BASE);
   }, 60_000);
 
   afterAll(() => {
@@ -90,4 +103,82 @@ describe.skipIf(!built)('kevbox routes (built server)', () => {
     expect(res.status).toBeLessThan(400);
     expect(res.headers.get('location')).toBe('/stremio/configure');
   });
+});
+
+// Guards the SHIPPED template against service/preset schema drift between the
+// export's source instance and this fork's UserDataSchema (the bug that shipped
+// a `debridge` service id this build did not know). If kevbox.config.json ever
+// drifts, the strengthened boot check fails and the server never goes healthy.
+const REAL_PORT = 3898;
+const REAL_BASE = `http://127.0.0.1:${REAL_PORT}`;
+let realChild: ChildProcess | undefined;
+
+describe.skipIf(!built)('kevbox real template (schema-drift guard)', () => {
+  beforeAll(async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), 'kevbox-real-'));
+    realChild = spawn(process.execPath, [serverEntry], {
+      env: {
+        ...process.env,
+        ...DUMMY_KEVBOX_ENV,
+        NODE_ENV: 'test',
+        PORT: String(REAL_PORT),
+        BASE_URL: REAL_BASE,
+        SECRET_KEY: '0'.repeat(64),
+        DATABASE_URI: `sqlite://${path.join(dataDir, 'db.sqlite')}`,
+        KEVBOX_MEMBERS: 'kevin',
+        KEVBOX_TEMPLATE_PATH: repoTemplate,
+      },
+      stdio: 'ignore',
+    });
+    await waitForHealth(REAL_BASE);
+  }, 60_000);
+
+  afterAll(() => {
+    realChild?.kill();
+  });
+
+  it('boots — the shipped kevbox.config.json passes the boot schema check', async () => {
+    const res = await fetch(`${REAL_BASE}/api/v1/health`);
+    expect(res.ok).toBe(true);
+  });
+});
+
+// Proves the strengthened boot check actually REJECTS a schema-invalid template
+// (here a service id this build does not recognise) by failing the deploy at
+// boot, rather than passing boot and 400-ing every family request.
+describe.skipIf(!built)('kevbox boot rejects a schema-invalid template', () => {
+  it('exits non-zero with a kevbox schema-validation error', async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), 'kevbox-bad-'));
+    const proc = spawn(process.execPath, [serverEntry], {
+      env: {
+        ...process.env,
+        ...DUMMY_KEVBOX_ENV,
+        NODE_ENV: 'test',
+        PORT: '3897',
+        BASE_URL: 'http://127.0.0.1:3897',
+        SECRET_KEY: '0'.repeat(64),
+        DATABASE_URI: `sqlite://${path.join(dataDir, 'db.sqlite')}`,
+        KEVBOX_MEMBERS: 'kevin',
+        KEVBOX_TEMPLATE_PATH: badFixture,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    proc.stdout?.on('data', (d) => (output += String(d)));
+    proc.stderr?.on('data', (d) => (output += String(d)));
+    const code = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        proc.kill();
+        resolve(null);
+      }, 30_000);
+      proc.on('exit', (c) => {
+        clearTimeout(timer);
+        resolve(c);
+      });
+    });
+    expect(code).not.toBe(0);
+    expect(output).toMatch(
+      /kevbox template (fails schema validation|boot validation failed|check failed)/
+    );
+  }, 40_000);
 });

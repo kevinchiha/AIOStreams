@@ -23,9 +23,14 @@ import {
   startAnalytics,
   stopAnalytics,
   TaskManager,
+  UserDataSchema,
 } from '@aiostreams/core';
 import { randomBytes } from 'crypto';
-import { checkKevboxTemplate } from './utils/kevboxTemplate.js';
+import {
+  checkKevboxTemplate,
+  loadKevboxTemplate,
+} from './utils/kevboxTemplate.js';
+import { buildKevboxUserData } from './utils/kevboxUserData.js';
 import { kevboxMembers, kevboxTemplatePath } from './routes/stremio/kevbox.js';
 
 const logger = createLogger('server');
@@ -161,6 +166,34 @@ async function start() {
       if (!kevboxCheck.ok) {
         throw new ConfigStartupError(
           `kevbox template check failed: ${kevboxCheck.reason}`
+        );
+      }
+      // The structural check above only confirms presets + a premiumize entry
+      // exist — it cannot see schema drift (e.g. a service id this build does
+      // not recognise). Build a synthetic member and schema-parse it so a
+      // template that would 400 every family request fails the deploy at boot
+      // instead, honoring the spec's fail-loud contract. Offline (no network).
+      try {
+        const probe = buildKevboxUserData(
+          loadKevboxTemplate(kevboxTemplatePath()),
+          kevboxMembers()[0],
+          'kevboxbootprobe00',
+          appConfig.bootstrap.baseUrl
+        );
+        const parsed = UserDataSchema.safeParse(probe);
+        if (!parsed.success) {
+          throw new ConfigStartupError(
+            `kevbox template fails schema validation: ${parsed.error.issues
+              .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+              .join('; ')}`
+          );
+        }
+      } catch (error) {
+        if (error instanceof ConfigStartupError) throw error;
+        throw new ConfigStartupError(
+          `kevbox template boot validation failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
         );
       }
       logger.info(`kevbox template OK at ${kevboxTemplatePath()}`);
