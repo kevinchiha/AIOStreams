@@ -72,7 +72,8 @@ export function buildKevboxUserData(
     ...cloned,
     services,
     uuid: syntheticUuid(name),
-    addonName: `Kevbox (${memberDisplayName(name)})`,
+    // No addonName override: the manifest falls back to ADDON_NAME ("Kevbox"),
+    // so every member's addon just shows "Kevbox" (no per-member suffix).
     selfManifestUrl: `${baseUrl}/stremio/k/${name}/${apiKey}/manifest.json`,
     ...(accessKey ? { accessKey } : {}),
   };

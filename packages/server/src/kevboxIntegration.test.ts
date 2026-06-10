@@ -53,6 +53,7 @@ describe.skipIf(!built)('kevbox routes (built server)', () => {
         BASE_URL: BASE,
         SECRET_KEY: '0'.repeat(64),
         DATABASE_URI: `sqlite://${path.join(dataDir, 'db.sqlite')}`,
+        ADDON_NAME: 'Kevbox',
         KEVBOX_MEMBERS: 'mum,kevin',
         KEVBOX_TEMPLATE_PATH: fixture,
       },
@@ -65,11 +66,11 @@ describe.skipIf(!built)('kevbox routes (built server)', () => {
     child?.kill();
   });
 
-  it('serves a member-branded manifest', async () => {
+  it('serves a Kevbox-branded manifest (no per-member suffix)', async () => {
     const res = await fetch(`${BASE}/stremio/k/mum/${KEY}/manifest.json`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { name?: string };
-    expect(body.name).toBe('Kevbox (Mum)');
+    expect(body.name).toBe('Kevbox');
   });
 
   it('rejects a non-allowlisted member with a playable error stream, not a 500', async () => {

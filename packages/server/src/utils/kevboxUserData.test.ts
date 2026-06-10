@@ -66,9 +66,9 @@ describe('buildKevboxUserData', () => {
     });
   });
 
-  it('sets member-branded addonName, synthetic uuid and selfManifestUrl', () => {
+  it('does not override addonName (manifest falls back to ADDON_NAME) and sets synthetic uuid + selfManifestUrl', () => {
     const userData = buildKevboxUserData(template(), 'mum', KEY, BASE);
-    expect(userData.addonName).toBe('Kevbox (Mum)');
+    expect(userData.addonName).toBeUndefined();
     expect(userData.uuid).toBe(syntheticUuid('mum'));
     expect(userData.selfManifestUrl).toBe(
       `${BASE}/stremio/k/mum/${KEY}/manifest.json`
