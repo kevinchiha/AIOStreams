@@ -7,6 +7,13 @@ services:
       - 127.0.0.1:3127:3000
     env_file:
       - .env
+    environment:
+      # The host has no IPv6 egress, but containers get a link-local IPv6 so
+      # getaddrinfo returns AAAA records; Node's fetch then tries the IPv6
+      # address first and HANGS until timeout (addons error with EAI_AGAIN /
+      # "aborted due to timeout"). Force IPv4-first resolution so upstream
+      # addon + metadata fetches connect immediately.
+      - NODE_OPTIONS=--dns-result-order=ipv4first
     volumes:
       - ./data:/app/data
       # The upstream Dockerfile's distroless stage never copies the template
