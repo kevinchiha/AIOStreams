@@ -340,6 +340,36 @@ failed gate + rollback.
 
 ## Revision history
 
+- **2026-06-10 v2.1 (implementation deltas)** — corrections found during
+  implementation + an adversarial code review, recorded here so the design
+  matches what actually shipped:
+  - **Auto-update dropped** (operator decision — unattended upstream merges
+    risked breaking the fork). §5 (`kevbox-update.sh` + timer) is **not
+    implemented**; updates are manual via the existing KEVBOX.md "Pulling in a
+    new release" flow. Consequently the **post-deploy kevbox manifest probe**
+    (§5 step 7, cited as a silent-drift mitigation in §2/§5) does **not**
+    exist. Drift is instead mitigated by: a boot-time schema check, an
+    integration mount-parity probe over all six resources, and sync-note
+    comments linking `app.ts`'s `stremioAuthRouter` mounts to `kevbox.ts`.
+  - **Open-relay wording overstated.** The `KEVBOX_MEMBERS` allowlist rejects
+    unknown *names* but does **not** bind a name to a key; a stranger who
+    guesses a valid member name (e.g. `mum`) and supplies their *own* working
+    Premiumize key still passes the only gate and is relayed through Kevin's
+    MediaFlow bandwidth / RPDB quota. It narrows the hole to "guess a valid
+    name", not "possess the member's key". Mitigation: **use non-obvious
+    member names** (treat them as low-entropy shared secrets). Accepted for
+    private family use; revisit with name→key binding if abused.
+  - **Template schema drift is real and now gated.** The export carried a
+    `debridge` service id this fork's `UserDataSchema` rejects; it would have
+    400'd every install while the structural boot check logged "template OK".
+    Fixed (removed) and the boot check strengthened to `UserDataSchema.safeParse`
+    a synthetic member plus an offline duplicate/dotted `instanceId` check, so
+    schema drift fails the deploy at boot (offline — no MediaFlow dependency).
+  - **Boot validation is schema-level, not full `validateConfig`.** Deliberate:
+    running `validateConfig` at boot would make startup depend on MediaFlow
+    being reachable. Non-schema `validateConfig` checks beyond instanceId
+    (synced URLs, SEL, access-key) still surface at request time with a logged
+    error, not at boot.
 - **2026-06-10 v2** — incorporated all 28 confirmed findings from the
   multi-agent gap audit (46 agents, every finding adversarially verified
   against the codebase; 0 refuted). Major changes: template bind mount

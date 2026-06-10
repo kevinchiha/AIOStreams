@@ -72,6 +72,10 @@ export const kevboxUserDataMiddleware = async (
 
   // Same user-facing error pattern as middlewares/userData.ts: Stremio
   // resources get a playable "error stream" response, anything else an APIError.
+  // The description is carried into the APIError too (manifest.json is not a
+  // RESOURCE, yet it is the FIRST request a member makes on install — so the
+  // specific reason, e.g. "not an allowed kevbox member", reaches them instead
+  // of a generic "Invalid UUID or password").
   const respondWithError = (description: string) => {
     if (constants.RESOURCES.includes(resource as Resource)) {
       res.status(200).json(
@@ -81,7 +85,13 @@ export const kevboxUserDataMiddleware = async (
       );
       return;
     }
-    next(new APIError(constants.ErrorCode.USER_INVALID_DETAILS));
+    next(
+      new APIError(
+        constants.ErrorCode.USER_INVALID_DETAILS,
+        undefined,
+        description
+      )
+    );
   };
 
   if (!name || !apiKey) {
@@ -150,6 +160,10 @@ export const kevboxUserDataMiddleware = async (
 const kevboxRouter: Router = Router({ mergeParams: true });
 kevboxRouter.use(corsMiddleware);
 kevboxRouter.use(kevboxUserDataMiddleware);
+// SYNC NOTE: these resource mounts mirror stremioAuthRouter in app.ts. If you
+// add/rename a stremio resource handler there, mirror it here (and vice versa)
+// — a new resource silently 404s for kevbox members otherwise (no compile
+// error). The integration test probes all six mounts to catch removals here.
 kevboxRouter.use('/manifest.json', manifest);
 kevboxRouter.use('/stream', stream);
 kevboxRouter.use('/meta', meta);

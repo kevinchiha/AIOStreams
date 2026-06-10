@@ -105,4 +105,26 @@ describe('checkKevboxTemplate', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain('NOPE');
   });
+
+  it('fails on a duplicate preset instanceId', () => {
+    const file = writeTemplate(
+      '{"presets":[{"instanceId":"001"},{"instanceId":"001"}],"services":[{"id":"premiumize"}]}'
+    );
+    const result = checkKevboxTemplate(file, {});
+    expect(result).toEqual({
+      ok: false,
+      reason: 'duplicate preset instanceId "001"',
+    });
+  });
+
+  it('fails on a dotted preset instanceId', () => {
+    const file = writeTemplate(
+      '{"presets":[{"instanceId":"a.b"}],"services":[{"id":"premiumize"}]}'
+    );
+    const result = checkKevboxTemplate(file, {});
+    expect(result).toEqual({
+      ok: false,
+      reason: 'preset instanceId "a.b" must not contain "."',
+    });
+  });
 });

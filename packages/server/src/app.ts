@@ -155,6 +155,9 @@ stremioRouter.use('/u', alias);
 const stremioAuthRouter = express.Router({ mergeParams: true });
 stremioAuthRouter.use(corsMiddleware);
 stremioAuthRouter.use(userDataMiddleware);
+// SYNC NOTE: the kevbox router (routes/stremio/kevbox.ts) mirrors these
+// resource mounts. If you add/rename a resource handler here, mirror it there
+// too, or kevbox members silently 404 on it.
 stremioAuthRouter.use('/manifest.json', manifest);
 stremioAuthRouter.use('/stream', stream);
 stremioAuthRouter.use('/configure', requireSessionIfAuthRequired, configure);

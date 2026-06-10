@@ -103,6 +103,25 @@ describe.skipIf(!built)('kevbox routes (built server)', () => {
     expect(res.status).toBeLessThan(400);
     expect(res.headers.get('location')).toBe('/stremio/configure');
   });
+
+  // Mount-parity guard: every resource the kevbox router mirrors from
+  // stremioAuthRouter must be reachable (a missing mount falls through to a
+  // routing 404). Probes the four resources the cases above do not, so a
+  // dropped kevbox.ts mount is caught here, not by a silent family 404.
+  it('mounts all six stremio resources (none falls through to a 404)', async () => {
+    const paths = [
+      `/stremio/k/mum/${KEY}/manifest.json`,
+      `/stremio/k/mum/${KEY}/stream/movie/tt0111161.json`,
+      `/stremio/k/mum/${KEY}/meta/movie/tt0111161.json`,
+      `/stremio/k/mum/${KEY}/catalog/movie/top.json`,
+      `/stremio/k/mum/${KEY}/subtitles/movie/tt0111161.json`,
+      `/stremio/k/mum/${KEY}/addon_catalog/movie/top.json`,
+    ];
+    for (const p of paths) {
+      const res = await fetch(`${BASE}${p}`);
+      expect(res.status, `${p} should be mounted (not 404)`).not.toBe(404);
+    }
+  });
 });
 
 // Guards the SHIPPED template against service/preset schema drift between the

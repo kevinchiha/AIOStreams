@@ -97,6 +97,25 @@ export function checkKevboxTemplate(
     if (!Array.isArray(template.presets) || template.presets.length === 0) {
       return { ok: false, reason: 'template has no presets' };
     }
+    // Mirror validateConfig's two hard (non-schema, never-skipped) preset
+    // checks offline, so a duplicate/dotted instanceId fails the deploy at
+    // boot instead of 400-ing every family request (UserDataSchema.safeParse
+    // alone does not catch these — see the boot probe in server.ts).
+    const seenInstanceIds = new Set<string>();
+    for (const preset of template.presets) {
+      const id =
+        typeof preset === 'object' && preset !== null
+          ? (preset as { instanceId?: unknown }).instanceId
+          : undefined;
+      if (typeof id !== 'string') continue;
+      if (id.includes('.')) {
+        return { ok: false, reason: `preset instanceId "${id}" must not contain "."` };
+      }
+      if (seenInstanceIds.has(id)) {
+        return { ok: false, reason: `duplicate preset instanceId "${id}"` };
+      }
+      seenInstanceIds.add(id);
+    }
     return { ok: true };
   } catch (error: unknown) {
     return {
