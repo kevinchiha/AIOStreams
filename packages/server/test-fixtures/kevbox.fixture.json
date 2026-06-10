@@ -1,0 +1,22 @@
+{
+  "presets": [
+    {
+      "type": "torrentio",
+      "instanceId": "001",
+      "enabled": true,
+      "options": {
+        "name": "Torrentio",
+        "timeout": 10000,
+        "resources": ["stream"],
+        "services": ["premiumize"],
+        "useMultipleInstances": false
+      }
+    }
+  ],
+  "services": [
+    { "id": "premiumize", "enabled": true, "credentials": {} }
+  ],
+  "sortCriteria": { "global": [] },
+  "formatter": { "id": "gdrive" },
+  "excludeUncached": true
+}
