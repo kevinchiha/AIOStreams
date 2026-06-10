@@ -84,24 +84,16 @@
   "sortCriteria": {
     "global": [
       {
-        "key": "addon",
-        "direction": "desc"
-      },
-      {
-        "key": "cached",
-        "direction": "desc"
-      },
-      {
-        "key": "library",
-        "direction": "desc"
-      },
-      {
         "key": "resolution",
         "direction": "desc"
       },
       {
+        "key": "addon",
+        "direction": "desc"
+      },
+      {
         "key": "size",
-        "direction": "asc"
+        "direction": "desc"
       }
     ],
     "cached": [],
@@ -127,8 +119,9 @@
     "proxiedServices": []
   },
   "resultLimits": {
-    "addon": 8,
-    "resolution": 20
+    "resolution": 3,
+    "addon": 3,
+    "mode": "conjunctive"
   },
   "size": {
     "global": {
