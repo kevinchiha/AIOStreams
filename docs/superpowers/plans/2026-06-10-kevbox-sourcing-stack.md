@@ -4,11 +4,11 @@
 
 **Goal:** Self-host the sourcing layer (Prowlarr + FlareSolverr, Zilean, MediaFusion) on the VPS, wire it into Kevbox via existing builtins/env vars, and retire the flaky external scrapers (Comet, Sootio, Knaben, TorrentGalaxy builtins).
 
-**Architecture:** All new services join the existing `compose.kevbox.yaml` project (shared network, pinned subnet `172.30.0.0/16`, DNS by service name). Kevbox reaches Prowlarr via the AIOStreams Prowlarr builtin in preconfigured-instance mode (`BUILTIN_PROWLARR_URL`/`BUILTIN_PROWLARR_API_KEY` env), Zilean via `BUILTIN_ZILEAN_URL` (Torznab builtin), and self-hosted MediaFusion via a `${KEVBOX_MEDIAFUSION_URL}` template placeholder pointing at a new public vhost `mf.kevbox.dev` (MediaFusion playback URLs route through its `HOST_URL`, so family Stremio clients must reach it). Spec: [`docs/superpowers/specs/2026-06-10-kevbox-sourcing-stack.md`](../specs/2026-06-10-kevbox-sourcing-stack.md).
+**Architecture:** All new services join the existing `compose.kevbox.yaml` project (shared network, pinned subnet `172.30.0.0/16`, DNS by service name). Kevbox reaches Prowlarr via the AIOStreams Prowlarr builtin in preconfigured-instance mode (`BUILTIN_PROWLARR_URL`/`BUILTIN_PROWLARR_API_KEY` env), Zilean via `BUILTIN_ZILEAN_URL` (Torznab builtin), and self-hosted MediaFusion via a `${KEVBOX_MEDIAFUSION_URL}` template placeholder pointing at `http://mediafusion:8000` on the compose network — **internal-only** (rev 2: the Rust v6 line returns raw infoHashes via the header flow, never `HOST_URL` playback URLs; kevbox resolves them through Premiumize via the template's `serviceWrap` block — see spec §3.4). Spec: [`docs/superpowers/specs/2026-06-10-kevbox-sourcing-stack.md`](../specs/2026-06-10-kevbox-sourcing-stack.md).
 
-**Tech Stack:** docker compose; `lscr.io/linuxserver/prowlarr`, `ghcr.io/flaresolverr/flaresolverr`, `ipromknight/zilean:v3.5.0` + `postgres:17-alpine`, `mhdzumair/mediafusion:6.0.0-beta.21` (Rust; **never `:latest`** — that's the old Python line) + `postgres:18-alpine` + `redis:7-alpine`; nginx + certbot on the host; vitest for the template tests.
+**Tech Stack:** docker compose; `lscr.io/linuxserver/prowlarr`, `ghcr.io/flaresolverr/flaresolverr`, `ipromknight/zilean:v3.5.0` + `postgres:17-alpine`, `mhdzumair/mediafusion:6.0.0-beta.21` (Rust; **never `:latest`** — a stale v6 beta that moves unpredictably) + `postgres:18-alpine` + `redis:7-alpine`; vitest for the template tests.
 
-**Execution split:** Phase A (Tasks 1–3) is **local repo work** on this machine — TDD, commits. Phase B (Tasks 4–11) is **VPS ops** over SSH (`ssh persovps` — adjust to your actual SSH alias). Commit order in Phase A is load-bearing: the template on the VPS is bind-mounted with instant mtime reload, so the VPS merges only the infra commit (Task 1) at first, and takes the template commit (Task 2) at cutover (Task 10) after all env vars and services exist.
+**Execution split:** Phase A (Tasks 1–3) is **local repo work** on this machine — TDD, commits. Phase B (Tasks 4–11; Task 8 removed at rev 2) is **VPS ops** over SSH (`ssh persovps` — adjust to your actual SSH alias). Commit order in Phase A is load-bearing: the template on the VPS is a single-file bind mount (inode-pinned — git-driven changes only apply after a kevbox recreate), so the VPS merges only the infra commit (Task 1) at first, and takes the template commit (Task 2) at cutover (Task 10) after all env vars and services exist.
 
 **Secrets policy:** the fork is PUBLIC. No secret values in any committed file — secrets go only into the VPS `.env`. The template references env via `${VAR}` placeholders; compose references env via `${VAR}` interpolation from the same `.env`.
 
@@ -37,13 +37,14 @@ The current file has a single `kevbox` service and a `networks` block. Leave bot
 
 ```yaml
 # Shared env for the MediaFusion api + worker (same image, two commands).
-# Sources: our own Prowlarr + Zilean only. Public-site live scrapers are OFF
-# (Cloudflare sites are covered via Prowlarr+FlareSolverr instead), which is
-# also why the official stack's browserless/byparr containers are absent here.
+# Sources: our own Prowlarr + Zilean only. NOTE: the IS_SCRAP_FROM_* flags gate
+# only the LIVE search path; the image also seeds always-on spider/DMM cron rows
+# in Postgres — Task 9 Step 3 disables those after first boot. No public-site
+# scraping happens, which is why browserless/byparr containers are absent here.
 x-mediafusion-env: &mediafusion-env
   HOST_URL: ${KEVBOX_MEDIAFUSION_URL}
   POSTER_HOST_URL: ${KEVBOX_MEDIAFUSION_URL}
-  CONTACT_EMAIL: kevin.chiha@gmail.com
+  CONTACT_EMAIL: admin@example.com   # sentinel MediaFusion hides; never a personal address
   SECRET_KEY: ${MEDIAFUSION_SECRET_KEY}
   API_PASSWORD: ${MEDIAFUSION_API_PASSWORD}
   POSTGRES_URI: postgresql://mediafusion:${MEDIAFUSION_POSTGRES_PASSWORD}@mediafusion-postgres:5432/mediafusion
@@ -51,13 +52,17 @@ x-mediafusion-env: &mediafusion-env
   IS_SCRAP_FROM_PROWLARR: "true"
   PROWLARR_URL: http://prowlarr:9696
   PROWLARR_API_KEY: ${PROWLARR_API_KEY}
-  PROWLARR_LIVE_TITLE_SEARCH: "true"
+  PROWLARR_LIVE_TITLE_SEARCH: "true"   # inert for kevbox traffic: useCachedResultsOnly → live_search_streams=false
   IS_SCRAP_FROM_PUBLIC_INDEXERS: "false"
   IS_SCRAP_FROM_PUBLIC_USENET_INDEXERS: "false"
   IS_SCRAP_FROM_TORRENTIO: "false"
   IS_SCRAP_FROM_MEDIAFUSION: "false"
   IS_SCRAP_FROM_ZILEAN: "true"
   ZILEAN_URL: http://zilean:8181
+  # Belt-and-braces: the seeded hourly dmm_hashlist cron ignores IS_SCRAP_* flags;
+  # zero commit budgets make its handler no-op even if the row is ever re-enabled.
+  DMM_HASHLIST_COMMITS_PER_RUN: "0"
+  DMM_HASHLIST_BACKFILL_COMMITS_PER_RUN: "0"
   ENABLE_RATE_LIMIT: "false"
 ```
 
@@ -86,6 +91,7 @@ New services (append inside `services:`, sibling to `kevbox`):
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
     restart: unless-stopped
+    mem_limit: 1g          # each concurrent CF solve spawns a Chromium (~0.2-0.5 GiB)
     environment:
       - LOG_LEVEL=info
     # No host port: only Prowlarr consumes it, at http://flaresolverr:8191
@@ -99,6 +105,7 @@ New services (append inside `services:`, sibling to `kevbox`):
     image: ipromknight/zilean:v3.5.0
     container_name: zilean
     restart: unless-stopped
+    mem_limit: 3g          # DMM import spikes ~2 GiB RSS; a contained OOM restarts + resumes
     tty: true
     environment:
       Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
@@ -132,7 +139,8 @@ New services (append inside `services:`, sibling to `kevbox`):
     image: postgres:17-alpine
     container_name: zilean-postgres
     restart: unless-stopped
-    shm_size: 1g
+    mem_limit: 2g
+    shm_size: 2g           # upstream compose value; tmpfs is lazily allocated (costs nothing idle)
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
       POSTGRES_USER: postgres
@@ -155,9 +163,10 @@ New services (append inside `services:`, sibling to `kevbox`):
     image: mhdzumair/mediafusion:6.0.0-beta.21
     container_name: mediafusion
     restart: unless-stopped
+    mem_limit: 1g
     environment: *mediafusion-env
     ports:
-      - 127.0.0.1:8000:8000   # host nginx vhost mf.kevbox.dev proxies here
+      - 127.0.0.1:8000:8000   # ops/debug only; kevbox reaches it at http://mediafusion:8000
     depends_on:
       mediafusion-postgres:
         condition: service_healthy
@@ -168,7 +177,7 @@ New services (append inside `services:`, sibling to `kevbox`):
       interval: 1m
       timeout: 10s
       retries: 5
-      start_period: 20m       # first boot runs sqlx migrations + IMDb dataset import
+      start_period: 2m        # boot only runs sqlx migrations (IMDb import = Task 9 worker job)
     logging:
       driver: json-file
       options:
@@ -180,6 +189,7 @@ New services (append inside `services:`, sibling to `kevbox`):
     container_name: mediafusion-worker
     command: ["/usr/local/bin/mediafusion-worker"]
     restart: unless-stopped
+    mem_limit: 2g          # runs the (manually triggered) IMDb import + all scrape jobs
     environment: *mediafusion-env
     depends_on:
       mediafusion-postgres:
@@ -196,7 +206,7 @@ New services (append inside `services:`, sibling to `kevbox`):
     image: postgres:18-alpine
     container_name: mediafusion-postgres
     restart: unless-stopped
-    shm_size: 256mb
+    shm_size: 512mb        # upstream compose value
     environment:
       POSTGRES_USER: mediafusion
       POSTGRES_PASSWORD: ${MEDIAFUSION_POSTGRES_PASSWORD}
@@ -215,6 +225,8 @@ New services (append inside `services:`, sibling to `kevbox`):
       - "random_page_cost=1.1"
       - "-c"
       - "max_connections=100"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"  # MF's admin slow-query routes need it
     volumes:
       - mediafusion-postgres-data:/var/lib/postgresql
       - ./deploy/mediafusion-postgres-init.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
@@ -236,6 +248,7 @@ New services (append inside `services:`, sibling to `kevbox`):
     restart: unless-stopped
     # No maxmemory/eviction policy: Redis is MediaFusion's task queue —
     # evicting queue keys under memory pressure would silently drop jobs.
+    # No requirepass: single-tenant compose network, no host port (vendor default).
     command: redis-server --appendonly yes --save 60 1
     volumes:
       - mediafusion-redis-data:/data
@@ -265,7 +278,8 @@ volumes:
 
 - [ ] **Step 3: Validate the compose file**
 
-Run: `docker compose -f compose.kevbox.yaml config --quiet`
+First: `[ -f .env ] || touch .env` — the existing kevbox service declares `env_file: .env`, and compose hard-fails (`env file ... not found`) without it locally (the real one only exists on the VPS).
+Then: `docker compose -f compose.kevbox.yaml config --quiet`
 Expected: exit 0, only warnings about unset variables (e.g. `"ZILEAN_POSTGRES_PASSWORD" variable is not set`) — those are defined in the VPS `.env`.
 (If docker isn't installed locally, skip — Task 5 Step 2 validates on the VPS before anything starts.)
 
@@ -283,6 +297,7 @@ git rev-parse --short HEAD   # ← record this: it is <INFRA_SHA>, used in Task 
 
 **Files:**
 - Modify: `packages/server/src/utils/kevboxRepoTemplate.test.ts`
+- Modify: `packages/server/src/kevboxIntegration.test.ts`
 - Modify: `kevbox.config.json`
 
 - [ ] **Step 1: Write the failing tests**
@@ -384,6 +399,16 @@ describe('repo kevbox.config.json', () => {
     );
     expect(mediafusion?.options.url).toBe('https://mediafusion.example.com');
     expect(mediafusion?.options.useCachedResultsOnly).toBe(true);
+    expect(mediafusion?.options.resources).toEqual(['stream']);
+  });
+
+  it('service-wraps mediafusion through premiumize (MF v6 returns raw infoHashes)', () => {
+    const template = loadKevboxTemplate(repoTemplate, dummyEnv);
+    expect(template.serviceWrap).toEqual({
+      enabled: true,
+      presets: ['a04'],
+      services: ['premiumize'],
+    });
   });
 
   it('carries no catalog modifications for dropped addons', () => {
@@ -400,15 +425,15 @@ describe('repo kevbox.config.json', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `pnpm -F server exec vitest run src/utils/kevboxRepoTemplate.test.ts`
-Expected: FAIL — "has exactly the agreed sourcing lineup" reports `comet`, `sootio`, `knaben`, `torrent-galaxy` present and `prowlarr` missing; "carries no catalog modifications" reports `Sootio` entries; "mediafusion points at the self-hosted instance" reports `options.url` undefined.
+Expected: FAIL — "has exactly the agreed sourcing lineup" reports `comet`, `sootio`, `knaben`, `torrent-galaxy` present and `prowlarr` missing; "carries no catalog modifications" reports `Sootio` entries; "mediafusion points at the self-hosted instance" reports `options.url` undefined; "service-wraps mediafusion" reports `serviceWrap` undefined.
 
-- [ ] **Step 3: Edit `kevbox.config.json`**
+- [ ] **Step 3: Edit `kevbox.config.json` (+ the integration-test env)**
 
-Four edits, in the `presets` array and `catalogModifications`:
+Six edits — five in `kevbox.config.json`, one in the integration test:
 
 1. **Delete** these four whole preset objects: `"type": "comet"` (instanceId `782`), `"type": "sootio"` (`2c2`), `"type": "knaben"` (`7c4`), `"type": "torrent-galaxy"` (`7f3`).
 
-2. **Replace** the `mediafusion` entry (instanceId `a04`) with (only change: the added `"url"` line):
+2. **Replace** the `mediafusion` entry (instanceId `a04`) with (changes: the added `"url"` line, and `resources` trimmed to `stream` — MF's catalog/meta URLs build on its now-internal `HOST_URL` and would be unreachable from clients):
 
 ```json
     {
@@ -420,9 +445,7 @@ Four edits, in the `presets` array and `catalogModifications`:
         "timeout": 10000,
         "url": "${KEVBOX_MEDIAFUSION_URL}",
         "resources": [
-          "stream",
-          "catalog",
-          "meta"
+          "stream"
         ],
         "useCachedResultsOnly": true,
         "enableWatchlistCatalogs": false,
@@ -486,24 +509,37 @@ Four edits, in the `presets` array and `catalogModifications`:
   ],
 ```
 
+5. **Add** a top-level `serviceWrap` block (sibling of `presets`) — the self-hosted Rust MediaFusion returns raw torrent infoHashes via the header flow, and without wrapping, kevbox would pass them through as unplayable P2P streams instead of resolving them with Premiumize:
+
+```json
+  "serviceWrap": {
+    "enabled": true,
+    "presets": ["a04"],
+    "services": ["premiumize"]
+  },
+```
+
+6. In `packages/server/src/kevboxIntegration.test.ts`, extend `DUMMY_KEVBOX_ENV` with `KEVBOX_MEDIAFUSION_URL: 'https://mediafusion.example.com'` — its schema-drift guard suite boots the built server against the REAL repo template, and without this it fails (boot-check throws on the new unset placeholder) whenever `packages/server/dist` exists.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm -F server exec vitest run src/utils/kevboxRepoTemplate.test.ts`
-Expected: PASS (8 tests).
+Expected: PASS (9 tests).
 
-- [ ] **Step 5: Run the full server test suite**
+- [ ] **Step 5: Run the full server test suite — built**
 
-Run: `pnpm -F server test`
-Expected: PASS (the other kevbox tests use fixtures, not the repo template, so they are unaffected).
+Run: `pnpm build && pnpm -F server test`
+Expected: PASS. The build matters: `kevboxIntegration.test.ts`'s schema-drift guard is `describe.skipIf(!built)` and boots the built server against the REAL repo template — without `dist/` present it silently skips and stops guarding the new template.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add kevbox.config.json packages/server/src/utils/kevboxRepoTemplate.test.ts
+git add kevbox.config.json packages/server/src/utils/kevboxRepoTemplate.test.ts packages/server/src/kevboxIntegration.test.ts
 git commit -m "feat(kevbox): switch template to self-hosted sourcing lineup
 
 Drop comet/sootio/knaben/torrent-galaxy, add prowlarr builtin preset,
-repoint mediafusion at \${KEVBOX_MEDIAFUSION_URL}, prune sootio catalogs."
+repoint mediafusion at \${KEVBOX_MEDIAFUSION_URL} (stream-only, service-
+wrapped through premiumize), prune sootio catalogs."
 ```
 
 ---
@@ -518,7 +554,7 @@ repoint mediafusion at \${KEVBOX_MEDIAFUSION_URL}, prune sootio catalogs."
 In `KEVBOX.md`, in "The template" section's env table, add after the `KEVBOX_TEMPLATE_PATH` row:
 
 ```markdown
-| `KEVBOX_MEDIAFUSION_URL` | Base URL of the self-hosted MediaFusion (`https://mf.kevbox.dev`) — substituted into the template's `mediafusion` preset |
+| `KEVBOX_MEDIAFUSION_URL` | Base URL of the self-hosted MediaFusion (`http://mediafusion:8000`, docker-internal — never public) — substituted into the template's `mediafusion` preset |
 ```
 
 - [ ] **Step 2: Add a sourcing-stack section**
@@ -536,7 +572,7 @@ The compose project also runs the sourcing layer (design + plan in
 | --- | --- | --- |
 | `prowlarr` (+ `flaresolverr`) | Indexer manager (live torrent-site search, Cloudflare cleared by FlareSolverr) | Kevbox builtin via `BUILTIN_PROWLARR_URL` / `BUILTIN_PROWLARR_API_KEY`; UI via SSH tunnel to `127.0.0.1:9696` |
 | `zilean` (+ `zilean-postgres`) | DMM cached-hash index (Torznab) | `BUILTIN_ZILEAN_URL=http://zilean:8181` |
-| `mediafusion` api+worker (+ `mediafusion-postgres`, `mediafusion-redis`) | Self-hosted MediaFusion, scraping our Prowlarr + Zilean only | template `url` = `${KEVBOX_MEDIAFUSION_URL}` → public vhost `mf.kevbox.dev` (playback URLs route through it, so it must stay publicly reachable; its nginx vhost keeps `access_log off`) |
+| `mediafusion` api+worker (+ `mediafusion-postgres`, `mediafusion-redis`) | Self-hosted MediaFusion, scraping our Prowlarr + Zilean only; returns raw infoHashes that kevbox resolves via Premiumize (template `serviceWrap`) | template `url` = `${KEVBOX_MEDIAFUSION_URL}` = `http://mediafusion:8000` (docker-internal, never exposed); ops/debug via SSH tunnel to `127.0.0.1:8000` |
 
 External fallbacks kept in the template: Torrentio, StremThru Torz, Peerflix,
 TorrentsDB. Dropped: Comet, Sootio, and the in-process Knaben/TorrentGalaxy
@@ -546,7 +582,17 @@ Additional `.env` vars on the VPS (names only — values never in git):
 `BUILTIN_PROWLARR_URL`, `BUILTIN_PROWLARR_API_KEY`, `PROWLARR_API_KEY` (same
 value, consumed by MediaFusion/compose), `BUILTIN_ZILEAN_URL`,
 `ZILEAN_POSTGRES_PASSWORD`, `KEVBOX_MEDIAFUSION_URL`, `MEDIAFUSION_SECRET_KEY`,
-`MEDIAFUSION_API_PASSWORD`, `MEDIAFUSION_POSTGRES_PASSWORD`.
+`MEDIAFUSION_API_PASSWORD` (dual-consumed: AIOStreams core reads this exact
+env name and sends it as `api_password` on every mediafusion-preset request —
+both consumers must share one value), `MEDIAFUSION_POSTGRES_PASSWORD`.
+
+Ops notes:
+- After a host reboot, restart kevbox once Prowlarr is healthy — the builtin
+  fetches preconfigured indexers once at boot with no retry (streaming still
+  works via live fallback; only the configure-UI indexer picker degrades).
+- Backups: zilean/mediafusion Postgres are deliberately not backed up
+  (re-importable from public sources); `prowlarr-config` is the one
+  unrecoverable volume — snapshot it after indexer changes (plan Task 6 Step 8).
 ```
 
 - [ ] **Step 3: Commit and push**
@@ -605,10 +651,16 @@ git log --oneline -1            # expect the "add self-hosted sourcing services"
 git diff HEAD~1 --stat          # expect ONLY compose.kevbox.yaml + deploy/mediafusion-postgres-init.sql
 ```
 
-- [ ] **Step 2: Pre-flight — host port conflicts**
+- [ ] **Step 2: Pre-flight — ports, disk, RAM baseline, .env perms**
 
-Run: `ss -ltn | grep -E ':(9696|8000|8181)\s'`
-Expected: empty (ports free). If not, change the host-side port in compose and the matching nginx/tunnel references in later tasks.
+```bash
+ss -ltn | grep -E ':(9696|8000|8181)\s'   # expected: empty (ports free)
+df -h /var/lib/docker                      # expected: >= 40 GB free — go/no-go before any import
+docker stats --no-stream; free -h          # record the firecrawl-api baseline for later comparison
+stat -c %a .env                            # expected: 600 — run `chmod 600 .env` if not
+```
+
+If a port is taken, change the host-side port in compose and the matching tunnel references in later tasks.
 
 - [ ] **Step 3: Add the secrets that don't depend on Prowlarr to `.env`**
 
@@ -620,9 +672,11 @@ Append to `/opt/kevbox/AIOStreams/.env` (generate each value fresh; never reuse 
   echo "MEDIAFUSION_SECRET_KEY=$(openssl rand -hex 16)"
   echo "MEDIAFUSION_API_PASSWORD=$(openssl rand -hex 16)"
   echo "MEDIAFUSION_POSTGRES_PASSWORD=$(openssl rand -hex 24)"
-  echo "KEVBOX_MEDIAFUSION_URL=https://mf.kevbox.dev"
+  echo "KEVBOX_MEDIAFUSION_URL=http://mediafusion:8000"
 } >> .env
 ```
+
+(Optional hardening, skipped for now on this single-admin box: kevbox's `env_file: .env` injects ALL of these into the kevbox container, though it only needs the `BUILTIN_*`/`KEVBOX_*` vars — compose `${VAR}` interpolation reads the project `.env` regardless of `env_file`, so the secrets could live in a separate interpolation-only file.)
 
 - [ ] **Step 4: Validate compose with real env**
 
@@ -641,8 +695,9 @@ docker compose -f compose.kevbox.yaml ps prowlarr flaresolverr   # both Up
 - [ ] **Step 2: Grab the Prowlarr API key and finish `.env`**
 
 ```bash
+until docker exec prowlarr grep -q '<ApiKey>' /config/config.xml 2>/dev/null; do sleep 2; done
 PROWLARR_KEY=$(docker exec prowlarr sh -c "grep -o '<ApiKey>[^<]*' /config/config.xml | cut -c9-")
-echo "PROWLARR_API_KEY=${PROWLARR_KEY}"            # sanity: 32 hex chars
+[[ "$PROWLARR_KEY" =~ ^[0-9a-f]{32}$ ]] || { echo "bad key: '$PROWLARR_KEY'" >&2; false; }
 {
   echo "PROWLARR_API_KEY=${PROWLARR_KEY}"
   echo "BUILTIN_PROWLARR_URL=http://prowlarr:9696"
@@ -677,7 +732,6 @@ UI: Indexers → Add Indexer. Add each, Test, Save. Starting set (all public, no
 | The Pirate Bay | — | |
 | YTS | — | |
 | EZTV | — | |
-| TheRARBG | — | |
 | LimeTorrents | — | |
 | Nyaa.si | — | anime |
 | BitSearch | — | DHT |
@@ -685,9 +739,9 @@ UI: Indexers → Add Indexer. Add each, Test, Save. Starting set (all public, no
 | TorrentDownload | — | |
 | RuTor | — | |
 | Knaben | — | meta-search — replaces the retired in-process builtin |
-| TorrentGalaxy (search the catalog for "galaxy"; add the variant that exists) | `cf` if Test fails without it | replaces the retired in-process builtin |
+| TorrentGalaxyClone (the variant present in the current catalog) | `cf` if Test fails without it | replaces the retired in-process builtin |
 
-Rules of thumb: if Test fails with a Cloudflare/403 error, add the `cf` tag and re-Test. If an indexer's site is dead, skip it — coverage is the set, not any single site.
+Rules of thumb: if Test fails with a Cloudflare/403 error, add the `cf` tag and re-Test. If an indexer's site is dead, skip it — coverage is the set, not any single site. (TheRARBG is NOT in the list: Prowlarr removed it from its catalog in Oct 2025 — don't go looking for it; Knaben + BitSearch cover the overlap. Keep the cf-tagged count small — each concurrent Cloudflare solve costs FlareSolverr a Chromium.)
 
 - [ ] **Step 6: Verify search end-to-end through Prowlarr**
 
@@ -705,10 +759,23 @@ Expected: a number > 0.
 
 ```bash
 docker compose -f compose.kevbox.yaml up -d --force-recreate kevbox
-docker logs kevbox 2>&1 | grep -i 'preconfigured indexers'
+docker logs kevbox 2>&1 | grep -iE 'prowlarr.*(fail|error)'
 ```
 
-Expected: a log line like `Fetched N preconfigured indexers` (N = count you enabled). The family template doesn't reference Prowlarr yet — this only proves the wiring before cutover.
+Expected: empty — no Prowlarr init errors. (The success line `Fetched N preconfigured indexers` is logger.debug and invisible at the default `LOG_LEVEL=info`; don't grep for it. Set `LOG_LEVEL=debug` in `.env` temporarily if you want to see it. The definitive end-to-end proof is Task 10 Step 3's per-addon stream counts.) The family template doesn't reference Prowlarr yet — this only proves the wiring before cutover.
+
+- [ ] **Step 8: Snapshot the Prowlarr config volume**
+
+The API key, forms-auth, FlareSolverr proxy and the hand-added indexer set live ONLY in the `prowlarr-config` volume — the one piece of un-re-importable manual state in the stack (Zilean/MediaFusion data rebuilds from public sources):
+
+```bash
+sudo mkdir -p /opt/kevbox/backups
+docker run --rm -v prowlarr-config:/config -v /opt/kevbox/backups:/backup alpine \
+  tar czf /backup/prowlarr-config-$(date +%F).tgz -C /config .
+sudo chmod 600 /opt/kevbox/backups/prowlarr-config-*.tgz   # contains the API key + auth hash
+```
+
+Re-run after future indexer changes.
 
 ### Task 7: Zilean up + first import
 
@@ -719,7 +786,7 @@ docker compose -f compose.kevbox.yaml up -d zilean-postgres zilean
 docker logs -f zilean   # watch: DMM hashlist pages importing; Ctrl-C to detach
 ```
 
-The first full DMM + IMDb import takes **several hours** and runs incrementally on the built-in hourly scheduler (resumes if interrupted). RAM check while it runs: `docker stats --no-stream zilean zilean-postgres`. You can proceed to Tasks 8–9 in parallel — but see the Task 9 note about not racing both first imports at once on purpose if RAM looks tight.
+The first full DMM + IMDb import takes **several hours** and runs incrementally on the built-in hourly scheduler (resumes if interrupted). RAM check while it runs: `docker stats --no-stream zilean zilean-postgres`. You can proceed to Task 9 in parallel — MediaFusion's heavy piece (the IMDb import) is now an explicit manual step (Task 9 Step 4) that you simply don't trigger until Zilean's import is done.
 
 - [ ] **Step 2: Verify the Torznab endpoint AIOStreams will use**
 
@@ -741,74 +808,64 @@ docker compose -f compose.kevbox.yaml up -d --force-recreate kevbox
 
 Until this step kevbox keeps using the public Zilean instance — zero coverage gap.
 
-### Task 8: Public vhost for MediaFusion (`mf.kevbox.dev`)
+### Task 8: ~~Public vhost for MediaFusion~~ — REMOVED (rev 2)
 
-- [ ] **Step 1: DNS**
-
-At the kevbox.dev DNS provider, add an A record: `mf.kevbox.dev` → the VPS IPv4 (same address `streams.kevbox.dev` points at). Verify: `dig +short mf.kevbox.dev` returns it.
-
-- [ ] **Step 2: nginx vhost**
-
-Create `/etc/nginx/sites-available/mf.kevbox.dev`:
-
-```nginx
-server {
-    listen 80;
-    server_name mf.kevbox.dev;
-
-    # Playback URLs embed per-user tokens — never log them.
-    access_log off;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 120s;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/mf.kevbox.dev /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-- [ ] **Step 3: TLS**
-
-```bash
-sudo certbot --nginx -d mf.kevbox.dev
-```
-
-Expected: cert issued, vhost rewritten for 443. (Backend 502 until Task 9 is fine — certbot doesn't need it.)
+The gap audit verified against the pinned Rust source that AIOStreams' header
+flow makes MediaFusion return raw infoHashes — it never emits `HOST_URL`
+playback URLs — so the self-hosted instance needs **no public exposure at
+all**. `KEVBOX_MEDIAFUSION_URL=http://mediafusion:8000` (Task 5 Step 3) keeps
+it docker-internal: no DNS record, no nginx vhost, no certbot. Kevbox resolves
+the hashes through Premiumize via the template's `serviceWrap` block (Task 2
+Step 3 item 5). Task number retained so later cross-references stay valid.
 
 ### Task 9: MediaFusion stack up
 
-> RAM courtesy note: MediaFusion's worker imports IMDb datasets on first boot
-> (several GB into Postgres). If Zilean's first import is still in its heavy
-> phase, `docker stats` first; with < 2 GiB free + swap untouched, just wait
-> for Zilean before starting MediaFusion.
+> RAM courtesy note: MediaFusion's heavy piece — the IMDb dataset import — does
+> NOT run on its own (it is seeded disabled upstream); it is triggered manually
+> in Step 4 below. Start the stack whenever; just don't trigger Step 4 while
+> Zilean's first import is in its heavy phase (`docker stats` first).
+> Disk pre-flight: `df -h /var/lib/docker` ≥ 25 GB free before Step 4.
 
 - [ ] **Step 1: Start the stack**
 
 ```bash
 docker compose -f compose.kevbox.yaml up -d mediafusion-postgres mediafusion-redis mediafusion mediafusion-worker
 docker logs -f mediafusion         # watch migrations apply; Ctrl-C to detach
-docker logs -f mediafusion-worker  # watch the IMDb import kick off
+docker logs -f mediafusion-worker  # scheduler + queue runners start (no IMDb import yet — that's Step 4)
 ```
 
-- [ ] **Step 2: Verify health + public manifest**
+- [ ] **Step 2: Verify health + manifest (loopback)**
 
 ```bash
 curl -fsS http://127.0.0.1:8000/health && echo OK
-curl -fsS https://mf.kevbox.dev/health && echo PUBLIC-OK
-curl -s https://mf.kevbox.dev/manifest.json | jq -r .name
+curl -s http://127.0.0.1:8000/manifest.json | jq -r .name
 ```
 
-Expected: both `OK`s and the MediaFusion addon name. First boot can take many minutes (healthcheck start_period is 20m) — if `/health` isn't up yet, watch the logs rather than restarting.
+Expected: `OK` and the MediaFusion addon name within a couple of minutes — migrations on a fresh DB are quick (`start_period` is 2m). If `/health` isn't up after ~5 minutes, read `docker logs mediafusion` for migration/config errors (bad `POSTGRES_URI`/`SECRET_KEY`) instead of waiting longer.
 
-- [ ] **Step 3: Resource snapshot**
+- [ ] **Step 3: Disable the seeded spider/DMM cron jobs**
+
+The image seeds always-on cron rows (sport-video every 20 min, tamilmv every 3 h, hourly DMM-hashlist ingestion, …) that **ignore the `IS_SCRAP_FROM_*` env flags** — left alone they scrape public torrent sites directly from the VPS IP and duplicate Zilean's ~10 GB DMM corpus into MediaFusion's Postgres:
+
+```bash
+docker exec mediafusion-postgres psql -U mediafusion -d mediafusion -c \
+  "UPDATE cron_jobs SET enabled=false WHERE name LIKE 'spider_%' OR name IN ('dmm_hashlist','jackett_feed','rss_feed','acestream_bg');"
+docker exec mediafusion-postgres psql -U mediafusion -d mediafusion -c \
+  "SELECT name, schedule FROM cron_jobs WHERE enabled;"
+```
+
+Expected: the surviving enabled rows are the wanted ones — `background_search`, `prowlarr_feed`, `cleanup_*`, poster/metadata jobs. (The `DMM_HASHLIST_*_COMMITS_PER_RUN=0` env in compose is a second guard: even a re-enabled DMM row no-ops.)
+
+- [ ] **Step 4: Trigger the IMDb dataset import — deliberately, after Zilean's import is done**
+
+Seeded disabled upstream; never runs by itself. Without it MF falls back to per-title Cinemeta/TMDB lookups (worse matching). Run once, timed to not race Zilean's heavy phase:
+
+```bash
+docker exec mediafusion-worker /usr/local/bin/mediafusion-worker --run-job imdb_dataset_import
+docker logs -f mediafusion-worker   # several GB into Postgres; Ctrl-C to detach
+```
+
+- [ ] **Step 5: Resource snapshot**
 
 ```bash
 docker stats --no-stream
@@ -824,10 +881,10 @@ Expected: total new-stack usage in the 2–3 GiB range; swap mostly unused.
 Every var the new template and builtins need must be present:
 
 ```bash
-grep -E '^(BUILTIN_PROWLARR_URL|BUILTIN_PROWLARR_API_KEY|BUILTIN_ZILEAN_URL|KEVBOX_MEDIAFUSION_URL)=' .env | sed 's/=.*/=<set>/'
+grep -E '^(BUILTIN_PROWLARR_URL|BUILTIN_PROWLARR_API_KEY|KEVBOX_MEDIAFUSION_URL)=' .env | sed 's/=.*/=<set>/'
 ```
 
-Expected: all four lines print.
+Expected: all three lines print. `BUILTIN_ZILEAN_URL` is intentionally NOT required here — it lands at Task 7 Step 3 only after Zilean's first import completes; until then the zilean preset uses the public default instance. Do NOT add it early just to satisfy a pre-flight (that would flip the family onto a half-imported index).
 
 - [ ] **Step 2: Pull the remaining commits and recreate kevbox**
 
@@ -837,7 +894,7 @@ docker compose -f compose.kevbox.yaml up -d --build kevbox
 docker logs kevbox 2>&1 | tail -20
 ```
 
-Expected: clean boot — no `kevbox template` errors (a broken template fails boot by design), and the `Fetched N preconfigured indexers` line again.
+Expected: clean boot — no `kevbox template` errors (a broken template fails boot by design) and no Prowlarr init errors. (Don't grep for the `Fetched N preconfigured indexers` success line — it is debug-level and invisible at the default `LOG_LEVEL=info`; Step 3 is the real proof.)
 
 - [ ] **Step 3: Verify a member manifest and stream response**
 
@@ -859,15 +916,34 @@ Expected: name `Kevbox`; non-zero counts for the seven kept/new addons (Zilean s
 In your own Stremio (kevin's install URL): open a popular movie and a current
 series episode → results appear within the timeout, grouped per the template
 (≤3 per resolution per addon, ≤4 GB) → pick a Prowlarr-sourced and a
-MediaFusion-sourced stream → both start within a few seconds via Premiumize.
+MediaFusion-sourced stream → both start within a few seconds via Premiumize
+(MediaFusion streams arrive as infoHashes and are resolved by the template's
+`serviceWrap` — confirm they play through Premiumize, not raw P2P).
+
+Note: the FIRST request for a fresh title can miss Prowlarr rows — the builtin
+makes one aggregated Prowlarr call, and a cold Cloudflare solve can blow the
+15 s budget; results land in a week-long cache, so open the title a second
+time before judging. To bound the tail, keep CF-tagged indexers few and set
+their query timeouts low in Prowlarr.
 
 - [ ] **Step 2: Confirm the dropped public dependencies are really gone**
 
 `docker logs kevbox 2>&1 | grep -icE 'comet|sootio'` over a fresh request window — expect 0 (no fetches to dropped addons).
 
-- [ ] **Step 3: Monitoring (optional but cheap)**
+- [ ] **Step 3: Monitoring (do it — the worker can die silently)**
 
-In uptime-kuma add HTTP monitors: `https://mf.kevbox.dev/health` and `https://streams.kevbox.dev` (existing). Prowlarr/Zilean are loopback-bound; to monitor them, attach the uptime-kuma container to the compose network (`docker network connect aiostreams_default uptime-kuma` — check the exact network name with `docker network ls`) and monitor `http://prowlarr:9696/ping` and `http://zilean:8181/healthchecks/ping`.
+`mediafusion-worker` alone runs every MF cron/queue job and has no health surface: if it wedges, the API keeps serving progressively staler results behind a green `/health`, and kevbox keeps showing MediaFusion as "responding".
+
+Attach uptime-kuma to the compose network **declaratively** — in uptime-kuma's own compose file add the kevbox network as external and join the service to it (a manual `docker network connect` is lost whenever either side is recreated; check the exact network name with `docker network ls`). Then add monitors:
+
+- `https://streams.kevbox.dev` (existing)
+- `http://mediafusion:8000/health`, `http://prowlarr:9696/ping`, `http://zilean:8181/healthchecks/ping`
+- Worker liveness — a staleness probe on the job scheduler (alert when nothing has been enqueued for > 6 h), via a host cron that pings an uptime-kuma push monitor only on success:
+
+```bash
+docker exec mediafusion-postgres psql -U mediafusion -d mediafusion -tAc \
+  "SELECT (now() - max(last_enqueued_at)) < interval '6 hours' FROM cron_jobs WHERE enabled;"
+```
 
 - [ ] **Step 4: Family note**
 
@@ -887,7 +963,7 @@ Record steady-state numbers next to the spec's §7 estimates. If reality diverge
 
 ## Rollback notes
 
-- **Template-level rollback (fast):** `git revert` the Task 2 commit, push, `git pull` on the VPS — the bind-mounted template reverts on next request; recreate kevbox to restore env-independence. The old lineup needs no new env vars, so this is always safe.
+- **Template-level rollback (fast):** `git revert` the Task 2 commit, push, `git pull` on the VPS, then `docker compose -f compose.kevbox.yaml up -d --force-recreate kevbox`. The recreate is **mandatory**, not hygiene: the single-file bind mount pins the inode, so a git-replaced file never reaches the running container on its own. The old lineup needs no new env vars, so this is always safe.
 - **Zilean rollback:** remove `BUILTIN_ZILEAN_URL` from `.env`, recreate kevbox → falls back to the public default instance.
-- **MediaFusion rollback:** set `KEVBOX_MEDIAFUSION_URL=https://mediafusion.elfhosted.com` in `.env` (the prior public instance), recreate kevbox.
+- **MediaFusion rollback:** set `KEVBOX_MEDIAFUSION_URL=https://mediafusion.elfhosted.com` in `.env` (the prior public instance — still on the Python line, which honors the header flow as debrid passthrough), recreate kevbox. Two notes: kevbox then sends `MEDIAFUSION_API_PASSWORD` as `api_password` to the third-party instance — treat the value as exposed and rotate it when rolling forward; the template's `serviceWrap` is a no-op for streams that arrive already resolved, so it can stay. Restoring `resources` to include catalog/meta is optional (they work against the public instance).
 - **Full infra rollback:** `docker compose -f compose.kevbox.yaml down prowlarr flaresolverr zilean zilean-postgres mediafusion mediafusion-worker mediafusion-postgres mediafusion-redis` (named volumes survive; add `-v` only when certain).
