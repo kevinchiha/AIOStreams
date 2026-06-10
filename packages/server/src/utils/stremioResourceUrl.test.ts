@@ -14,6 +14,15 @@ describe('STREMIO_RESOURCE_REQUEST_REGEX', () => {
     }
   });
 
+  it('matches email local-part member names', () => {
+    for (const name of ['kevin.chiha', 'alecco_999', 'member+tv']) {
+      const m = STREMIO_RESOURCE_REQUEST_REGEX.exec(
+        `/stremio/k/${name}/${KEY}/stream/movie/tt0111161.json`
+      );
+      expect(m?.[1]).toBe('stream');
+    }
+  });
+
   it('matches the stock :uuid/:encryptedPassword form', () => {
     const m = STREMIO_RESOURCE_REQUEST_REGEX.exec(
       '/stremio/12345678-1234-1234-1234-123456789012/cGFzcw==/stream/movie/tt0111161.json'
@@ -31,10 +40,10 @@ describe('STREMIO_RESOURCE_REQUEST_REGEX', () => {
   });
 
   it('rejects out-of-bounds kevbox name/key shapes (drift guard vs KEVBOX_*_REGEX)', () => {
-    // name > 20 chars
+    // name > 64 chars
     expect(
       STREMIO_RESOURCE_REQUEST_REGEX.test(
-        `/stremio/k/${'a'.repeat(21)}/${KEY}/stream/movie/tt0111161.json`
+        `/stremio/k/${'a'.repeat(65)}/${KEY}/stream/movie/tt0111161.json`
       )
     ).toBe(false);
     // key < 8 chars

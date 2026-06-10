@@ -53,9 +53,9 @@ One URL per member — same shared config, their own Premiumize key:
 
     https://streams.kevbox.dev/stremio/k/<name>/<premiumizeApiKey>/manifest.json
 
-- `name`: 1-20 chars of `a-z 0-9 -` (e.g. `mum`, `kevin`) AND listed in
-  `KEVBOX_MEMBERS` on the server. Unknown names get a friendly error.
-  Shows up in logs and as the addon name in Stremio ("Kevbox (Mum)").
+- `name`: 1-64 chars of lowercase `a-z 0-9 . _ + -` (normally the part of the
+  member's email before `@`) AND listed in `KEVBOX_MEMBERS` on the server.
+  Unknown names get a friendly error. The name may appear in application logs.
 - Adding a member: add the name to `KEVBOX_MEMBERS` in `.env`, restart, send
   them their URL. Swapping a key = edit the URL, reinstall.
 - Config changes (filters, addons, sorting) are made in `kevbox.config.json`

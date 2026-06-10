@@ -43,7 +43,8 @@ aliases (still one DB config per member, no key in URL).
 https://streams.kevbox.dev/stremio/k/{name}/{premiumizeApiKey}/manifest.json
 ```
 
-- `name`: `[a-z0-9-]{1,20}` (e.g. `mum`, `kevin`) **and present in the
+- `name`: `[a-z0-9._+-]{1,64}` (normally the lowercase email local-part)
+  **and present in the
   `KEVBOX_MEMBERS` allowlist** (comma-separated names in the VPS `.env`).
   Used for: log lines, deterministic synthetic UUID (UUIDv5 of the name —
   stable across key rotations), and per-member manifest name **"Kevbox (Mum)"**

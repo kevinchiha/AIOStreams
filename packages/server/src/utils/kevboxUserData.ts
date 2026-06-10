@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { UserData } from '@aiostreams/core';
 
-export const KEVBOX_NAME_REGEX = /^[a-z0-9-]{1,20}$/;
+// Supports both legacy short names and the lowercase local-part of a member email.
+export const KEVBOX_NAME_REGEX = /^[a-z0-9._+-]{1,64}$/;
 export const KEVBOX_API_KEY_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
 /** Invalid member name / API key — maps to a user-facing error, not a 500. */
@@ -45,7 +46,7 @@ export function buildKevboxUserData(
 ): UserData {
   if (!KEVBOX_NAME_REGEX.test(name)) {
     throw new KevboxParamError(
-      `Invalid kevbox member name "${name}" — expected 1-20 chars of a-z, 0-9 or "-"`
+      `Invalid kevbox member name "${name}" — expected 1-64 chars of a-z, 0-9, ".", "_", "+" or "-"`
     );
   }
   if (!KEVBOX_API_KEY_REGEX.test(apiKey)) {

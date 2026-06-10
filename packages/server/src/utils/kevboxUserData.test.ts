@@ -90,8 +90,14 @@ describe('buildKevboxUserData', () => {
       KevboxParamError
     );
     expect(() =>
-      buildKevboxUserData(template(), 'a'.repeat(21), KEY, BASE)
+      buildKevboxUserData(template(), 'a'.repeat(65), KEY, BASE)
     ).toThrow(KevboxParamError);
+  });
+
+  it('accepts lowercase email local-parts as member names', () => {
+    for (const name of ['kevin.chiha', 'alecco_999', 'member+tv']) {
+      expect(() => buildKevboxUserData(template(), name, KEY, BASE)).not.toThrow();
+    }
   });
 
   it('rejects malformed API keys', () => {

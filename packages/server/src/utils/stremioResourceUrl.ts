@@ -8,8 +8,8 @@
  * @aiostreams/core env bootstrap, and shared so the kevbox name/key shapes
  * here cannot silently drift from their source of truth.
  *
- * SYNC NOTE: the `[a-z0-9-]{1,20}` and `[A-Za-z0-9_-]{8,128}` fragments mirror
+ * SYNC NOTE: the `[a-z0-9._+-]{1,64}` and `[A-Za-z0-9_-]{8,128}` fragments mirror
  * KEVBOX_NAME_REGEX / KEVBOX_API_KEY_REGEX in kevboxUserData.ts — keep in sync.
  */
 export const STREMIO_RESOURCE_REQUEST_REGEX =
-  /^\/stremio\/(?:[0-9a-fA-F-]{36}\/[A-Za-z0-9+/=]+|k\/[a-z0-9-]{1,20}\/[A-Za-z0-9_-]{8,128})\/(stream|meta|addon_catalog|subtitles|catalog)\/[^/]+\/[^/]+(?:\/[^/]+)?\.json\/?$/;
+  /^\/stremio\/(?:[0-9a-fA-F-]{36}\/[A-Za-z0-9+/=]+|k\/[a-z0-9._+-]{1,64}\/[A-Za-z0-9_-]{8,128})\/(stream|meta|addon_catalog|subtitles|catalog)\/[^/]+\/[^/]+(?:\/[^/]+)?\.json\/?$/;
