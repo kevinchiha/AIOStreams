@@ -112,16 +112,13 @@
     "cachedAnime": [],
     "uncachedAnime": []
   },
-  "posterService": "rpdb",
-  "rpdbApiKey": "${KEVBOX_RPDB_KEY}",
+  "posterService": "none",
   "formatter": {
     "id": "gdrive"
   },
   "proxy": {
     "id": "mediaflow",
-    "enabled": true,
-    "url": "${KEVBOX_MEDIAFLOW_URL}",
-    "credentials": "${KEVBOX_MEDIAFLOW_PASSWORD}",
+    "enabled": false,
     "proxiedAddons": [],
     "proxiedServices": []
   },

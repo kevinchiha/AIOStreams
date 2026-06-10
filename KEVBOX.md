@@ -74,12 +74,17 @@ One URL per member — same shared config, their own Premiumize key:
 | --- | --- |
 | `KEVBOX_MEMBERS` | Member allowlist (comma-separated). Required — kevbox is off without it |
 | `KEVBOX_TEMPLATE_PATH` | Optional override of the template location (default `<cwd>/kevbox.config.json`; the compose file bind-mounts it to `/app/kevbox.config.json`) |
-| `KEVBOX_MEDIAFLOW_URL` | MediaFlow proxy URL |
-| `KEVBOX_MEDIAFLOW_PASSWORD` | MediaFlow API password |
-| `KEVBOX_RPDB_KEY` | RPDB poster service key |
 
-Not running MediaFlow? Delete the `proxy` block from the template. No RPDB
-key? Set `"posterService": "none"` and remove `rpdbApiKey`.
+The shipped template needs **no secrets** — MediaFlow proxy and RPDB posters are
+disabled (Premiumize links aren't IP-locked, so MediaFlow only adds VPS
+bandwidth; RPDB is just rating badges). Each member's Premiumize key lives in
+their URL, not the env.
+
+Want them back later? **RPDB:** set `"posterService": "rpdb"`, add
+`"rpdbApiKey": "${KEVBOX_RPDB_KEY}"`, and set `KEVBOX_RPDB_KEY` (free key at
+ratingposterdb.com). **MediaFlow:** run a mediaflow-proxy container, set the
+template `proxy` to `"enabled": true` with `"url": "${KEVBOX_MEDIAFLOW_URL}"` /
+`"credentials": "${KEVBOX_MEDIAFLOW_PASSWORD}"`, and set those env vars.
 
 With `KEVBOX_MEMBERS` set, a broken template **fails server boot** (so the bad
 config is caught before redeploy, not at a family member's request).
@@ -99,9 +104,7 @@ config is caught before redeploy, not at a family member's request).
     # rate limits are per-client (not one bucket for the whole internet).
     TRUSTED_IPS=172.30.0.0/16,127.0.0.1/32,::1/128
     KEVBOX_MEMBERS=kevin,mum
-    KEVBOX_MEDIAFLOW_URL=...
-    KEVBOX_MEDIAFLOW_PASSWORD=...
-    KEVBOX_RPDB_KEY=...
+    # (no MediaFlow/RPDB secrets needed — both disabled in the template)
 
 ## Deploy & updates
 
