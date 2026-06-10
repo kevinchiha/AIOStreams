@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "test": "pnpm run test --workspaces",
+    "test": "pnpm -r exec vitest run --passWithNoTests",
     "release": "commit-and-tag-version",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "metadata": "node scripts/generateMetadata.cjs",
