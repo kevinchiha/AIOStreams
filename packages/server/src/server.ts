@@ -25,6 +25,8 @@ import {
   TaskManager,
 } from '@aiostreams/core';
 import { randomBytes } from 'crypto';
+import { checkKevboxTemplate } from './utils/kevboxTemplate.js';
+import { kevboxMembers, kevboxTemplatePath } from './routes/stremio/kevbox.js';
 
 const logger = createLogger('server');
 
@@ -151,6 +153,22 @@ async function start() {
   try {
     await initialiseDatabase();
     await initialiseTemplates();
+    // Kevbox: when members are configured, a broken template must fail the
+    // deploy loudly (fix the template and re-run `docker compose up`) instead
+    // of failing at a family member's request. Unset members = stock instance.
+    if (kevboxMembers().length > 0) {
+      const kevboxCheck = checkKevboxTemplate(kevboxTemplatePath());
+      if (!kevboxCheck.ok) {
+        throw new ConfigStartupError(
+          `kevbox template check failed: ${kevboxCheck.reason}`
+        );
+      }
+      logger.info(`kevbox template OK at ${kevboxTemplatePath()}`);
+    } else {
+      logger.warn(
+        'kevbox not configured (KEVBOX_MEMBERS unset) — kevbox routes will reject all requests'
+      );
+    }
     logStartupInfo();
     await initialiseRedis();
     initialiseAnimeDatabase();

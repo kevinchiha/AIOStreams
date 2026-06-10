@@ -30,6 +30,7 @@ import {
   manifest as chillLinkManifest,
   streams as chillLinkStreams,
 } from './routes/chilllink/index.js';
+import kevboxRouter from './routes/stremio/kevbox.js';
 import seanimeExtensionsRouter from './routes/seanime/extensions.js';
 import {
   gdrive,
@@ -163,6 +164,9 @@ stremioAuthRouter.use('/subtitles', subtitle);
 stremioAuthRouter.use('/addon_catalog', addonCatalog);
 
 app.use('/stremio', stremioRouter); // For public routes
+// Kevbox: key-in-URL family configs. Must be mounted before the
+// :uuid/:encryptedPassword route so 'k' is never parsed as a UUID.
+app.use('/stremio/k/:name/:apiKey', kevboxRouter);
 app.use('/stremio/:uuid/:encryptedPassword', stremioAuthRouter); // For authenticated routes
 
 const chillLinkRouter = express.Router({ mergeParams: true });

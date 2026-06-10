@@ -44,8 +44,10 @@ export const errorMiddleware = (
     return;
   }
   if (error.code === constants.ErrorCode.RATE_LIMIT_EXCEEDED) {
+    // kevbox: the k/:name/:apiKey alternative gives key-in-URL routes the
+    // same playable rate-limit error as stock configs.
     const stremioResourceRequestRegex =
-      /^\/stremio\/[0-9a-fA-F-]{36}\/[A-Za-z0-9+/=]+\/(stream|meta|addon_catalog|subtitles|catalog)\/[^/]+\/[^/]+(?:\/[^/]+)?\.json\/?$/;
+      /^\/stremio\/(?:[0-9a-fA-F-]{36}\/[A-Za-z0-9+/=]+|k\/[a-z0-9-]{1,20}\/[A-Za-z0-9_-]{8,128})\/(stream|meta|addon_catalog|subtitles|catalog)\/[^/]+\/[^/]+(?:\/[^/]+)?\.json\/?$/;
     const resource = stremioResourceRequestRegex.exec(req.originalUrl);
     if (resource) {
       res.json(
