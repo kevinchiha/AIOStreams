@@ -450,6 +450,7 @@ export const UserDataSchema = z.object({
   uuid: z.string().uuid().optional(),
   parentConfig: ParentConfigSchema.optional(),
   encryptedPassword: z.string().min(1).optional(),
+  selfManifestUrl: z.string().url().optional(), // kevbox: overrides the self-referencing manifest URL for non-DB configs
   trusted: z.boolean().optional(),
   showChanges: z.boolean().optional(),
   accessKey: z.string().optional(),

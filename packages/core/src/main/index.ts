@@ -42,7 +42,9 @@ export class AIOStreams {
     this.ctx = {
       userData,
       options,
-      manifestUrl: `${appConfig.bootstrap.baseUrl}/stremio/${userData.uuid}/${userData.encryptedPassword}/manifest.json`,
+      manifestUrl:
+        userData.selfManifestUrl ??
+        `${appConfig.bootstrap.baseUrl}/stremio/${userData.uuid}/${userData.encryptedPassword}/manifest.json`,
       manifests: {},
       supportedResources: {},
       finalResources: [],

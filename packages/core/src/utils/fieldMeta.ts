@@ -71,6 +71,7 @@ export interface FieldMeta {
 type IgnoredKeys =
   | 'uuid'
   | 'encryptedPassword'
+  | 'selfManifestUrl'
   | 'trusted'
   | 'addons'
   | 'proxies'
