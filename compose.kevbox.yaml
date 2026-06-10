@@ -1,0 +1,31 @@
+services:
+  kevbox:
+    build: .
+    container_name: kevbox
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:3127:3000
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      # The upstream Dockerfile's distroless stage never copies the template
+      # into the image (WORKDIR /app, dist-only) — without this mount every
+      # kevbox URL fails in production. Bind-mounting also means template
+      # edits apply via the mtime cache without an image rebuild.
+      - ./kevbox.config.json:/app/kevbox.config.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  default:
+    ipam:
+      config:
+        # Pinned so TRUSTED_IPS (.env) can cover it: the app only honors
+        # X-Forwarded-For from trusted subnets, and the default trust list
+        # covers docker0 (172.17.0.0/16) but not compose project networks.
+        # Without this, every client shares one rate-limit bucket.
+        - subnet: 172.30.0.0/16
