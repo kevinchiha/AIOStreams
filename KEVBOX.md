@@ -74,6 +74,7 @@ One URL per member — same shared config, their own Premiumize key:
 | --- | --- |
 | `KEVBOX_MEMBERS` | Member allowlist (comma-separated). Required — kevbox is off without it |
 | `KEVBOX_TEMPLATE_PATH` | Optional override of the template location (default `<cwd>/kevbox.config.json`; the compose file bind-mounts it to `/app/kevbox.config.json`) |
+| `KEVBOX_MEDIAFUSION_URL` | Base URL of the self-hosted MediaFusion (`http://mediafusion:8000`, docker-internal — never public) — substituted into the template's `mediafusion` preset |
 
 The shipped template needs **no secrets** — MediaFlow proxy and RPDB posters are
 disabled (Premiumize links aren't IP-locked, so MediaFlow only adds VPS
@@ -88,6 +89,38 @@ template `proxy` to `"enabled": true` with `"url": "${KEVBOX_MEDIAFLOW_URL}"` /
 
 With `KEVBOX_MEMBERS` set, a broken template **fails server boot** (so the bad
 config is caught before redeploy, not at a family member's request).
+
+## Self-hosted sourcing stack
+
+The compose project also runs the sourcing layer (design + plan in
+`docs/superpowers/specs/2026-06-10-kevbox-sourcing-stack.md` and
+`docs/superpowers/plans/2026-06-10-kevbox-sourcing-stack.md`):
+
+| Service | Role | Reached at |
+| --- | --- | --- |
+| `prowlarr` (+ `flaresolverr`) | Indexer manager (live torrent-site search, Cloudflare cleared by FlareSolverr) | Kevbox builtin via `BUILTIN_PROWLARR_URL` / `BUILTIN_PROWLARR_API_KEY`; UI via SSH tunnel to `127.0.0.1:9696` |
+| `zilean` (+ `zilean-postgres`) | DMM cached-hash index (Torznab) | `BUILTIN_ZILEAN_URL=http://zilean:8181` |
+| `mediafusion` api+worker (+ `mediafusion-postgres`, `mediafusion-redis`) | Self-hosted MediaFusion, scraping our Prowlarr + Zilean only; returns raw infoHashes that kevbox resolves via Premiumize (template `serviceWrap`) | template `url` = `${KEVBOX_MEDIAFUSION_URL}` = `http://mediafusion:8000` (docker-internal, never exposed); ops/debug via SSH tunnel to `127.0.0.1:8000` |
+
+External fallbacks kept in the template: Torrentio, StremThru Torz, Peerflix,
+TorrentsDB. Dropped: Comet, Sootio, and the in-process Knaben/TorrentGalaxy
+builtins (now Prowlarr indexers).
+
+Additional `.env` vars on the VPS (names only — values never in git):
+`BUILTIN_PROWLARR_URL`, `BUILTIN_PROWLARR_API_KEY`, `PROWLARR_API_KEY` (same
+value, consumed by MediaFusion/compose), `BUILTIN_ZILEAN_URL`,
+`ZILEAN_POSTGRES_PASSWORD`, `KEVBOX_MEDIAFUSION_URL`, `MEDIAFUSION_SECRET_KEY`,
+`MEDIAFUSION_API_PASSWORD` (dual-consumed: AIOStreams core reads this exact
+env name and sends it as `api_password` on every mediafusion-preset request —
+both consumers must share one value), `MEDIAFUSION_POSTGRES_PASSWORD`.
+
+Ops notes:
+- After a host reboot, restart kevbox once Prowlarr is healthy — the builtin
+  fetches preconfigured indexers once at boot with no retry (streaming still
+  works via live fallback; only the configure-UI indexer picker degrades).
+- Backups: zilean/mediafusion Postgres are deliberately not backed up
+  (re-importable from public sources); `prowlarr-config` is the one
+  unrecoverable volume — snapshot it after indexer changes (plan Task 6 Step 8).
 
 ## VPS environment (.env on the server, never in git)
 
