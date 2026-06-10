@@ -295,33 +295,15 @@
       }
     },
     {
-      "type": "comet",
-      "instanceId": "782",
-      "enabled": true,
-      "options": {
-        "name": "Comet",
-        "timeout": 10000,
-        "resources": [
-          "stream"
-        ],
-        "includeP2P": false,
-        "removeTrash": true,
-        "services": [
-          "premiumize"
-        ]
-      }
-    },
-    {
       "type": "mediafusion",
       "instanceId": "a04",
       "enabled": true,
       "options": {
         "name": "MediaFusion",
         "timeout": 10000,
+        "url": "${KEVBOX_MEDIAFUSION_URL}",
         "resources": [
-          "stream",
-          "catalog",
-          "meta"
+          "stream"
         ],
         "useCachedResultsOnly": true,
         "enableWatchlistCatalogs": false,
@@ -395,25 +377,6 @@
       }
     },
     {
-      "type": "sootio",
-      "instanceId": "2c2",
-      "enabled": true,
-      "options": {
-        "name": "Sootio",
-        "timeout": 7000,
-        "resources": [
-          "stream",
-          "catalog"
-        ],
-        "httpProviders": [],
-        "services": [
-          "premiumize"
-        ],
-        "mediaTypes": [],
-        "useMultipleInstances": false
-      }
-    },
-    {
       "type": "zilean",
       "instanceId": "249",
       "enabled": true,
@@ -424,34 +387,6 @@
         "services": [
           "premiumize"
         ],
-        "useMultipleInstances": false
-      }
-    },
-    {
-      "type": "knaben",
-      "instanceId": "7c4",
-      "enabled": true,
-      "options": {
-        "name": "Knaben",
-        "timeout": 7000,
-        "services": [
-          "premiumize"
-        ],
-        "mediaTypes": [],
-        "useMultipleInstances": false
-      }
-    },
-    {
-      "type": "torrent-galaxy",
-      "instanceId": "7f3",
-      "enabled": true,
-      "options": {
-        "name": "TorrentGalaxy",
-        "timeout": 7000,
-        "services": [
-          "premiumize"
-        ],
-        "mediaTypes": [],
         "useMultipleInstances": false
       }
     },
@@ -472,6 +407,21 @@
         ],
         "useMultipleInstances": false,
         "showTorrentLinks": false
+      }
+    },
+    {
+      "type": "prowlarr",
+      "instanceId": "9b2",
+      "enabled": true,
+      "options": {
+        "name": "Prowlarr",
+        "timeout": 15000,
+        "resources": ["stream"],
+        "indexers": [],
+        "sources": ["torrent"],
+        "mediaTypes": [],
+        "services": ["premiumize"],
+        "useMultipleInstances": false
       }
     }
   ],
@@ -495,28 +445,13 @@
       "hideable": true,
       "searchable": false,
       "addonName": "TorrentsDB"
-    },
-    {
-      "id": "2c26b98.premiumize-downloads",
-      "type": "movie",
-      "name": "Premiumize Downloads",
-      "shuffle": false,
-      "enabled": true,
-      "hideable": true,
-      "searchable": false,
-      "addonName": "Sootio"
-    },
-    {
-      "id": "2c26b98.premiumize-downloads",
-      "type": "series",
-      "name": "Premiumize Downloads",
-      "shuffle": false,
-      "enabled": true,
-      "hideable": true,
-      "searchable": false,
-      "addonName": "Sootio"
     }
   ],
+  "serviceWrap": {
+    "enabled": true,
+    "presets": ["a04"],
+    "services": ["premiumize"]
+  },
   "cacheAndPlay": {
     "streamTypes": [
       "usenet"

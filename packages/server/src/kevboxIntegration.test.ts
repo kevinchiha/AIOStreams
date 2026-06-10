@@ -25,6 +25,7 @@ const DUMMY_KEVBOX_ENV = {
   KEVBOX_MEDIAFLOW_URL: 'https://mediaflow.example.com',
   KEVBOX_MEDIAFLOW_PASSWORD: 'dummy',
   KEVBOX_RPDB_KEY: 'dummy',
+  KEVBOX_MEDIAFUSION_URL: 'https://mediafusion.example.com',
 };
 
 let child: ChildProcess | undefined;
