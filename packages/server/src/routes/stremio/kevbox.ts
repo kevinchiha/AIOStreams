@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response, Router } from 'express';
-import path from 'node:path';
 import {
   APIError,
   config as appConfig,
@@ -11,7 +10,11 @@ import {
   validateConfig,
 } from '@aiostreams/core';
 import { corsMiddleware } from '../../middlewares/index.js';
-import { loadKevboxTemplate } from '../../utils/kevboxTemplate.js';
+import {
+  loadKevboxTemplate,
+  kevboxMembers,
+  kevboxTemplatePath,
+} from '../../utils/kevboxTemplate.js';
 import {
   buildKevboxUserData,
   KevboxParamError,
@@ -33,21 +36,6 @@ const VALID_RESOURCES = [
   'manifest',
   'streams',
 ];
-
-export function kevboxTemplatePath(): string {
-  return (
-    process.env.KEVBOX_TEMPLATE_PATH ??
-    path.resolve(process.cwd(), 'kevbox.config.json')
-  );
-}
-
-/** The member allowlist. Empty array = kevbox disabled on this instance. */
-export function kevboxMembers(env: NodeJS.ProcessEnv = process.env): string[] {
-  return (env.KEVBOX_MEMBERS ?? '')
-    .split(',')
-    .map((member) => member.trim())
-    .filter((member) => member.length > 0);
-}
 
 interface KevboxParams {
   name?: string;

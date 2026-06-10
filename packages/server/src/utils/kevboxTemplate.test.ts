@@ -6,6 +6,7 @@ import {
   substituteEnvPlaceholders,
   loadKevboxTemplate,
   checkKevboxTemplate,
+  kevboxMembers,
 } from './kevboxTemplate.js';
 
 const writeTemplate = (content: string): string => {
@@ -126,5 +127,24 @@ describe('checkKevboxTemplate', () => {
       ok: false,
       reason: 'preset instanceId "a.b" must not contain "."',
     });
+  });
+});
+
+describe('kevboxMembers', () => {
+  it('parses a comma-separated allowlist', () => {
+    expect(kevboxMembers({ KEVBOX_MEMBERS: 'kevin,mum' })).toEqual([
+      'kevin',
+      'mum',
+    ]);
+  });
+
+  it('trims whitespace and drops blank entries', () => {
+    expect(kevboxMembers({ KEVBOX_MEMBERS: ' a , , b ,' })).toEqual(['a', 'b']);
+  });
+
+  it('returns an empty array when unset or empty (kevbox disabled)', () => {
+    expect(kevboxMembers({})).toEqual([]);
+    expect(kevboxMembers({ KEVBOX_MEMBERS: '' })).toEqual([]);
+    expect(kevboxMembers({ KEVBOX_MEMBERS: '   ' })).toEqual([]);
   });
 });

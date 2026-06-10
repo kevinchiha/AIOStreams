@@ -6,6 +6,7 @@ import {
   StremioTransformer,
 } from '@aiostreams/core';
 import { createResponse } from '../utils/responses.js';
+import { STREMIO_RESOURCE_REQUEST_REGEX } from '../utils/stremioResourceUrl.js';
 import { ZodError } from 'zod';
 
 const logger = createLogger('server');
@@ -44,11 +45,9 @@ export const errorMiddleware = (
     return;
   }
   if (error.code === constants.ErrorCode.RATE_LIMIT_EXCEEDED) {
-    // kevbox: the k/:name/:apiKey alternative gives key-in-URL routes the
-    // same playable rate-limit error as stock configs.
-    const stremioResourceRequestRegex =
-      /^\/stremio\/(?:[0-9a-fA-F-]{36}\/[A-Za-z0-9+/=]+|k\/[a-z0-9-]{1,20}\/[A-Za-z0-9_-]{8,128})\/(stream|meta|addon_catalog|subtitles|catalog)\/[^/]+\/[^/]+(?:\/[^/]+)?\.json\/?$/;
-    const resource = stremioResourceRequestRegex.exec(req.originalUrl);
+    // Playable "Rate Limit Exceeded" stream for stock and kevbox resource URLs
+    // (regex shared from utils/stremioResourceUrl.ts, where it is unit-tested).
+    const resource = STREMIO_RESOURCE_REQUEST_REGEX.exec(req.originalUrl);
     if (resource) {
       res.json(
         StremioTransformer.createDynamicError(

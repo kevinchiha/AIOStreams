@@ -1,6 +1,27 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 
 const PLACEHOLDER_REGEX = /\$\{([A-Z][A-Z0-9_]*)\}/g;
+
+/** Resolved path to the kevbox template (env override, else <cwd>/kevbox.config.json). */
+export function kevboxTemplatePath(): string {
+  return (
+    process.env.KEVBOX_TEMPLATE_PATH ??
+    path.resolve(process.cwd(), 'kevbox.config.json')
+  );
+}
+
+/**
+ * The member allowlist, parsed from KEVBOX_MEMBERS (comma-separated, trimmed,
+ * blanks dropped). Empty array = kevbox disabled on this instance. Kept here
+ * (core-free) so it is unit-testable without booting the @aiostreams/core env.
+ */
+export function kevboxMembers(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.KEVBOX_MEMBERS ?? '')
+    .split(',')
+    .map((member) => member.trim())
+    .filter((member) => member.length > 0);
+}
 
 /**
  * Replace ${ENV_VAR} placeholders with JSON-escaped env values.

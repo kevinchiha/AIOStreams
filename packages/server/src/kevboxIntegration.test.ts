@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -200,4 +200,48 @@ describe.skipIf(!built)('kevbox boot rejects a schema-invalid template', () => {
       /kevbox template (fails schema validation|boot validation failed|check failed)/
     );
   }, 40_000);
+});
+
+// Covers the runtime template-load-failure branch in kevbox.ts: the template
+// is re-read per request, so a file that vanishes AFTER boot must degrade to a
+// friendly "misconfigured" stream (HTTP 200), never an opaque 500.
+const LOADFAIL_PORT = 3896;
+const LOADFAIL_BASE = `http://127.0.0.1:${LOADFAIL_PORT}`;
+let loadFailChild: ChildProcess | undefined;
+
+describe.skipIf(!built)('kevbox runtime template-load failure', () => {
+  beforeAll(async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'kevbox-loadfail-'));
+    const tempTemplate = path.join(dir, 'kevbox.config.json');
+    copyFileSync(fixture, tempTemplate); // valid copy so the server boots
+    const dataDir = mkdtempSync(path.join(tmpdir(), 'kevbox-loadfail-db-'));
+    loadFailChild = spawn(process.execPath, [serverEntry], {
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        PORT: String(LOADFAIL_PORT),
+        BASE_URL: LOADFAIL_BASE,
+        SECRET_KEY: '0'.repeat(64),
+        DATABASE_URI: `sqlite://${path.join(dataDir, 'db.sqlite')}`,
+        KEVBOX_MEMBERS: 'mum',
+        KEVBOX_TEMPLATE_PATH: tempTemplate,
+      },
+      stdio: 'ignore',
+    });
+    await waitForHealth(LOADFAIL_BASE);
+    rmSync(tempTemplate); // break it AFTER boot — re-read on the next request
+  }, 60_000);
+
+  afterAll(() => {
+    loadFailChild?.kill();
+  });
+
+  it('serves a friendly "misconfigured" stream, not a 500', async () => {
+    const res = await fetch(
+      `${LOADFAIL_BASE}/stremio/k/mum/${KEY}/stream/movie/tt0111161.json`
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('misconfigured');
+  });
 });

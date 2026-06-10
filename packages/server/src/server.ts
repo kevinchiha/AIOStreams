@@ -29,9 +29,10 @@ import { randomBytes } from 'crypto';
 import {
   checkKevboxTemplate,
   loadKevboxTemplate,
+  kevboxMembers,
+  kevboxTemplatePath,
 } from './utils/kevboxTemplate.js';
 import { buildKevboxUserData } from './utils/kevboxUserData.js';
-import { kevboxMembers, kevboxTemplatePath } from './routes/stremio/kevbox.js';
 
 const logger = createLogger('server');
 
