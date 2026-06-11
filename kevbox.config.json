@@ -449,5 +449,5 @@
       "usenet"
     ]
   },
-  "checkOwned": true
+  "checkOwned": false
 }
