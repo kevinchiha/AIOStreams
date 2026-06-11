@@ -81,10 +81,21 @@
   "excludeUncachedFromServices": [],
   "excludeUncachedFromStreamTypes": [],
   "regexOverrides": [],
+  "rankedStreamExpressions": [
+    {
+      "expression": "size(resolution(streams, '1080p'), 1500000000, 2500000000)",
+      "score": 1000,
+      "enabled": true
+    }
+  ],
   "sortCriteria": {
     "global": [
       {
         "key": "resolution",
+        "direction": "desc"
+      },
+      {
+        "key": "streamExpressionScore",
         "direction": "desc"
       },
       {
@@ -93,7 +104,7 @@
       },
       {
         "key": "size",
-        "direction": "desc"
+        "direction": "asc"
       }
     ],
     "cached": [],
@@ -119,9 +130,13 @@
     "proxiedServices": []
   },
   "resultLimits": {
-    "resolution": 3,
-    "addon": 3,
-    "mode": "conjunctive"
+    "global": 50,
+    "sizeBuckets": {
+      "enabled": true,
+      "bandSizeBytes": 500000000,
+      "maxBytes": 4000000000,
+      "perBand": 1
+    }
   },
   "size": {
     "global": {
@@ -175,7 +190,7 @@
     "addons": []
   },
   "deduplicator": {
-    "enabled": false,
+    "enabled": true,
     "excludeAddons": [],
     "keys": [
       "filename",
@@ -187,7 +202,7 @@
   },
   "dynamicAddonFetching": {
     "enabled": true,
-    "condition": "(count(queriedAddons) >= 3 and count(totalStreams) >= 3) or (totalTimeTaken >= 3500 and count(totalStreams) >= 3) or (totalTimeTaken >= 6000 and count(totalStreams) >= 1) or totalTimeTaken >= 16000"
+    "condition": "(totalTimeTaken >= 2800 and count(totalStreams) >= 3) or (totalTimeTaken >= 4000 and count(totalStreams) >= 1) or totalTimeTaken >= 16000"
   },
   "autoPlay": {
     "attributes": [
