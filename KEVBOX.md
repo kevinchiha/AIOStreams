@@ -97,7 +97,7 @@ The compose project also runs the sourcing layer (design + plan in
 
 | Service | Role | Reached at |
 | --- | --- | --- |
-| `prowlarr` (+ `flaresolverr`) | Indexer manager (live torrent-site search, Cloudflare cleared by FlareSolverr) | Kevbox builtin via `BUILTIN_PROWLARR_URL` / `BUILTIN_PROWLARR_API_KEY`; UI via SSH tunnel to `127.0.0.1:9696` |
+| `prowlarr` | Indexer manager (live torrent-site search). No FlareSolverr — all indexers are Cloudflare-free (see below) | Kevbox builtin via `BUILTIN_PROWLARR_URL` / `BUILTIN_PROWLARR_API_KEY`; UI via SSH tunnel to `127.0.0.1:9696` |
 | `zilean` (+ `zilean-postgres`) | DMM cached-hash index (Torznab) | `BUILTIN_ZILEAN_URL=http://zilean:8181` |
 
 External fallbacks kept in the template: Torrentio, StremThru Torz, Peerflix,
@@ -111,12 +111,19 @@ kevbox already queries directly — so it was redundant, and in
 contributed zero streams). The `mediafusion` preset, the `serviceWrap` block,
 and the four `mediafusion*` containers were removed.
 
-**Prowlarr indexer set:** TPB, EZTV, RuTor, Knaben, Nyaa.si, YTS. Deliberately
-excluded — `1337x` (FlareSolverr does a ~20s CF solve per page → pins the
-aggregated search at 60s+), and `LimeTorrents`/`TorrentDownload` (return no
-infoHash, only a `.torrent` link the builtin must download to hash it; those
-fetches hang ~30s and block the whole Prowlarr addon). See
-`deploy/prowlarr-setup-indexers.py`.
+**Prowlarr indexer set (all Cloudflare-free → cold search ≤3s, no FlareSolverr):**
+TPB, RuTor, Knaben, Nyaa.si, YTS. Deliberately excluded:
+- `1337x`, `EZTV` — Cloudflare; their cold FlareSolverr solve (~20–60s) hung the
+  aggregated search (gated by its slowest indexer) and blew the preset budget on
+  first open. FlareSolverr itself was removed once no CF indexer remained.
+- `LimeTorrents`, `TorrentDownload` — return no infoHash, only a `.torrent` link
+  the builtin must download to hash it; those fetches hang ~30s and it awaits all
+  of them, so the whole Prowlarr addon returned nothing.
+
+The prowlarr preset `timeout` is `10000` (cold searches are ≤3s now). Dedup is
+**off** in the template (`deduplicator.enabled:false`) so each source's streams
+show separately rather than being merged into the highest-priority addon.
+See `deploy/prowlarr-setup-indexers.py`.
 
 Additional `.env` vars on the VPS (names only — values never in git):
 `BUILTIN_PROWLARR_URL`, `BUILTIN_PROWLARR_API_KEY`, `PROWLARR_API_KEY` (same

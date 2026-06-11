@@ -45,20 +45,6 @@ services:
         max-size: 10m
         max-file: '3'
 
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    restart: unless-stopped
-    mem_limit: 1g          # each concurrent CF solve spawns a Chromium (~0.2-0.5 GiB)
-    environment:
-      - LOG_LEVEL=info
-    # No host port: only Prowlarr consumes it, at http://flaresolverr:8191
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: '3'
-
   zilean:
     image: ipromknight/zilean:v3.5.0
     container_name: zilean

@@ -175,7 +175,7 @@
     "addons": []
   },
   "deduplicator": {
-    "enabled": true,
+    "enabled": false,
     "excludeAddons": [],
     "keys": [
       "filename",
@@ -393,7 +393,7 @@
       "enabled": true,
       "options": {
         "name": "Prowlarr",
-        "timeout": 15000,
+        "timeout": 10000,
         "resources": ["stream"],
         "indexers": [],
         "sources": ["torrent"],

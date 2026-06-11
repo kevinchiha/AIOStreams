@@ -40,22 +40,23 @@ def req(method, path, body=None):
 
 
 # (label, [match keywords on definitionName/name], cf?)
-# NOTE: 1337x intentionally omitted — via FlareSolverr it does a ~20s Chromium
-# Cloudflare solve PER PAGE, pinning the aggregated search to 60-70s and blowing
-# the kevbox prowlarr preset's 15s budget on every request.
-# NOTE: LimeTorrents + TorrentDownload also omitted — they return NO infoHash
-# (only a .torrent downloadUrl), so the builtin tries to download each .torrent
-# to extract the hash; those fetches hang ~30s and the builtin awaits ALL of
-# them, blowing the budget and making the WHOLE Prowlarr addon return nothing.
-# The remaining 6 (TPB, EZTV, RuTor, Knaben, Nyaa, YTS) all return infoHashes.
+# Final set is all-CLOUDFLARE-FREE so no indexer needs FlareSolverr (removed):
+# the aggregated search is gated by its slowest indexer, and any CF indexer's
+# cold ~20-60s FlareSolverr solve blew the kevbox prowlarr budget on first hit.
+# Intentionally omitted:
+#   1337x         — CF; ~20s solve PER PAGE → aggregated search 60-70s.
+#   EZTV          — CF; cold solve hung the aggregated search up to 60s.
+#   LimeTorrents  — no infoHash (only a .torrent downloadUrl); the builtin must
+#   TorrentDownload  download each .torrent to hash it, those fetches hang ~30s
+#                    and it awaits ALL of them → whole Prowlarr addon returns 0.
+# The remaining 5 (TPB, RuTor, Knaben, Nyaa, YTS) are CF-free and return
+# infoHashes directly → cold aggregated search ≤3s.
 TARGETS = [
     ("The Pirate Bay",   ["thepiratebay"],     False),
     ("YTS",              ["yts"],              False),
-    ("EZTV",             ["eztv"],             False),
     ("Nyaa.si",          ["nyaasi"],           False),
     ("RuTor",            ["rutor"],            False),
     ("Knaben",           ["knaben"],           False),
-    ("TorrentGalaxy",    ["torrentgalaxyclone", "torrentgalaxy"], True),
 ]
 
 
