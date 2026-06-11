@@ -185,6 +185,10 @@
     "uncached": "single_result",
     "p2p": "single_result"
   },
+  "dynamicAddonFetching": {
+    "enabled": true,
+    "condition": "(count(queriedAddons) >= 3 and count(totalStreams) >= 3) or (totalTimeTaken >= 3500 and count(totalStreams) >= 3) or (totalTimeTaken >= 6000 and count(totalStreams) >= 1) or totalTimeTaken >= 16000"
+  },
   "autoPlay": {
     "attributes": [
       "service",

@@ -49,14 +49,24 @@ def req(method, path, body=None):
 #   LimeTorrents  — no infoHash (only a .torrent downloadUrl); the builtin must
 #   TorrentDownload  download each .torrent to hash it, those fetches hang ~30s
 #                    and it awaits ALL of them → whole Prowlarr addon returns 0.
-# The remaining 5 (TPB, RuTor, Knaben, Nyaa, YTS) are CF-free and return
-# infoHashes directly → cold aggregated search ≤3s.
+# Curated Kevbox indexer set — all CF-free (no FlareSolverr) and public.
+# The Prowlarr builtin now queries each indexer INDEPENDENTLY in parallel with a
+# ~3.2s per-indexer timeout (mirrors the engine's dynamicAddonFetching "don't
+# wait for the slowest" at the indexer level), so a slow indexer can no longer
+# gate the search — it just drops. That made it safe to re-add Knaben (a slow
+# ~1.7s meta-search) and broaden coverage with more CF-free public indexers.
+# Still intentionally omitted (would need FlareSolverr, which is not deployed):
+#   1337x, EZTV, TorrentGalaxy — Cloudflare-protected.
+#   LimeTorrents, TorrentDownload — no infoHash (hashless .torrent downloads).
 TARGETS = [
-    ("The Pirate Bay",   ["thepiratebay"],     False),
-    ("YTS",              ["yts"],              False),
-    ("Nyaa.si",          ["nyaasi"],           False),
-    ("RuTor",            ["rutor"],            False),
-    ("Knaben",           ["knaben"],           False),
+    ("The Pirate Bay",   ["thepiratebay"],         False),
+    ("YTS",              ["yts"],                  False),
+    ("Nyaa.si",          ["nyaasi"],               False),
+    ("RuTor",            ["rutor"],                False),
+    ("Knaben",           ["knaben"],               False),
+    ("KickassTorrents",  ["kickasstorrents-to"],   False),
+    ("TorrentsCSV",      ["torrentscsv"],          False),
+    ("TorrentProject2",  ["torrentproject2"],      False),
 ]
 
 
