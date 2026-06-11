@@ -14,6 +14,8 @@ services:
       # "aborted due to timeout"). Force IPv4-first resolution so upstream
       # addon + metadata fetches connect immediately.
       - NODE_OPTIONS=--dns-result-order=ipv4first
+    depends_on:
+      - stremthru
     volumes:
       - ./data:/app/data
       # The upstream Dockerfile's distroless stage never copies the template
@@ -21,6 +23,38 @@ services:
       # kevbox URL fails in production. Bind-mounting also means template
       # edits apply via the mtime cache without an image rebuild.
       - ./kevbox.config.json:/app/kevbox.config.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # Self-hosted StremThru: the builtin debrid client (Zilean/Prowlarr Premiumize
+  # cache-checks + link generation) goes through this instead of the public
+  # instance (https://stremthru.13377001.xyz), removing a ~0.44s-per-round-trip
+  # public hop + shared rate limits. Pointed at by BUILTIN_STREMTHRU_URL in .env
+  # (http://stremthru:8080). Content-proxy OFF so it returns DIRECT Premiumize
+  # links (portable, matches the no-MediaFlow setup) — StremThru stays API-only
+  # and never sits in the playback path, so the internal URL is fine.
+  # Standalone: SQLite in /app/data, Redis not required, no STREMTHRU_STORE_AUTH
+  # (AIOStreams passes the family member's Premiumize token per request).
+  stremthru:
+    image: muniftanjim/stremthru:latest
+    container_name: stremthru
+    restart: unless-stopped
+    environment:
+      - "STREMTHRU_STORE_CONTENT_PROXY=*:false"
+      # We use StremThru ONLY as a Premiumize store proxy (checkMagnet +
+      # generateLink). Disable its indexer importers — left on, imdb_title
+      # downloads the full IMDb dataset and dmm_hashlist the DMM lists (~GBs,
+      # duplicating Zilean, scraping from the VPS IP). The store-proxy API is
+      # core and unaffected.
+      - "STREMTHRU_FEATURE=-imdb_title,-dmm_hashlist"
+      - STREMTHRU_LOG_LEVEL=INFO
+    volumes:
+      - stremthru-data:/app/data
+    ports:
+      - 127.0.0.1:8080:8080   # debug via SSH tunnel; kevbox uses http://stremthru:8080
     logging:
       driver: json-file
       options:
@@ -108,6 +142,7 @@ volumes:
   zilean-data:
   zilean-tmp:
   zilean-postgres-data:
+  stremthru-data:
 
 networks:
   default:
