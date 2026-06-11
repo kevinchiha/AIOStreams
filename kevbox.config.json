@@ -190,7 +190,7 @@
     "addons": []
   },
   "deduplicator": {
-    "enabled": true,
+    "enabled": false,
     "excludeAddons": [],
     "keys": [
       "filename",
