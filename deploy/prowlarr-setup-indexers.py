@@ -40,8 +40,11 @@ def req(method, path, body=None):
 
 
 # (label, [match keywords on definitionName/name], cf?)
+# NOTE: 1337x intentionally omitted — via FlareSolverr it does a ~20s Chromium
+# Cloudflare solve PER PAGE, pinning the aggregated search to 60-70s and blowing
+# the kevbox prowlarr preset's 15s budget on every request. TPB + Knaben + RuTor
+# cover the overlap. Re-add only if its CF behavior improves.
 TARGETS = [
-    ("1337x",            ["1337x"],            True),
     ("The Pirate Bay",   ["thepiratebay"],     False),
     ("YTS",              ["yts"],              False),
     ("EZTV",             ["eztv"],             False),
