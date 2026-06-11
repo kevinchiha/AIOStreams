@@ -153,12 +153,14 @@ class ProwlarrApi {
     type,
     limit,
     offset,
+    timeout,
   }: {
     query: string;
     indexerIds: number[];
     type: 'search';
     limit?: number;
     offset?: number;
+    timeout?: number;
   }): Promise<ProwlarrApiResponse<ProwlarrApiSearchItem[]>> {
     const cacheKey = `${this.baseUrl}:${type}:${query}:${indexerIds.join(',')}:${limit}:${offset}`;
 
@@ -177,7 +179,8 @@ class ProwlarrApi {
             ...(limit !== undefined && { limit }),
             ...(offset !== undefined && { offset }),
           },
-          ProwlarrApiSearchSchema
+          ProwlarrApiSearchSchema,
+          timeout
         ),
       isEmptyResult: (result) => result.data.length === 0,
       logger,

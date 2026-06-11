@@ -206,23 +206,44 @@ export class ProwlarrAddon extends BaseDebridAddon<ProwlarrAddonConfig> {
       return [];
     }
 
-    const searchPromises = queries.map((q) =>
-      queryLimit(async () => {
-        const start = Date.now();
-        const { data } = await this.api.search({
-          query: q,
-          indexerIds: chosenIndexers.map((indexer) => indexer.id),
-          type: 'search',
-          limit: 2000,
-        });
-        this.logger.info(
-          `Prowlarr ${protocol} search for ${q} took ${getTimeTakenSincePoint(start)}`,
-          {
-            results: data.length,
+    // Query each indexer INDEPENDENTLY in parallel, each with its own timeout,
+    // then merge whatever returned in time. This mirrors the engine's
+    // `dynamicAddonFetching` "don't wait for the slowest" behaviour, but at the
+    // indexer level: previously all indexer ids went in one aggregated Prowlarr
+    // call, so a single flaky/slow indexer (e.g. a down YTS mirror, or RuTor on
+    // a foreign-language query) gated the whole search to Prowlarr's ~12s HTTP
+    // ceiling. Now a laggard simply times out and drops; the fast indexers'
+    // results are returned immediately.
+    const PER_INDEXER_SEARCH_TIMEOUT = 3200;
+    const searchPromises = queries.flatMap((q) =>
+      chosenIndexers.map((indexer) =>
+        queryLimit(async () => {
+          const start = Date.now();
+          try {
+            const { data } = await this.api.search({
+              query: q,
+              indexerIds: [indexer.id],
+              type: 'search',
+              limit: 2000,
+              timeout: PER_INDEXER_SEARCH_TIMEOUT,
+            });
+            this.logger.info(
+              `Prowlarr ${protocol} search for ${q} [${indexer.name}] took ${getTimeTakenSincePoint(start)}`,
+              {
+                results: data.length,
+              }
+            );
+            return data;
+          } catch (error) {
+            this.logger.warn(
+              `Prowlarr ${protocol} search for ${q} [${indexer.name}] dropped after ${getTimeTakenSincePoint(start)}: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+            return [];
           }
-        );
-        return data;
-      })
+        })
+      )
     );
     const allResults = await Promise.all(searchPromises);
     return allResults.flat();
