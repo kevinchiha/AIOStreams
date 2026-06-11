@@ -13,7 +13,6 @@ const dummyEnv = {
   KEVBOX_MEDIAFLOW_URL: 'https://mediaflow.example.com',
   KEVBOX_MEDIAFLOW_PASSWORD: 'dummy-password',
   KEVBOX_RPDB_KEY: 'dummy-rpdb-key',
-  KEVBOX_MEDIAFUSION_URL: 'https://mediafusion.example.com',
 };
 
 interface TemplatePreset {
@@ -58,7 +57,6 @@ describe('repo kevbox.config.json', () => {
     const all = presets(loadKevboxTemplate(repoTemplate, dummyEnv));
     expect(all.map((p) => p.type).sort()).toEqual(
       [
-        'mediafusion',
         'peerflix',
         'prowlarr',
         'stremthruTorz',
@@ -86,22 +84,12 @@ describe('repo kevbox.config.json', () => {
     expect(prowlarr?.options.sources).toEqual(['torrent']);
   });
 
-  it('mediafusion points at the self-hosted instance via env placeholder', () => {
-    const mediafusion = presets(loadKevboxTemplate(repoTemplate, dummyEnv)).find(
-      (p) => p.type === 'mediafusion'
-    );
-    expect(mediafusion?.options.url).toBe('https://mediafusion.example.com');
-    expect(mediafusion?.options.useCachedResultsOnly).toBe(true);
-    expect(mediafusion?.options.resources).toEqual(['stream']);
-  });
-
-  it('service-wraps mediafusion through premiumize (MF v6 returns raw infoHashes)', () => {
+  it('does not include the dropped mediafusion preset or a serviceWrap block', () => {
     const template = loadKevboxTemplate(repoTemplate, dummyEnv);
-    expect(template.serviceWrap).toEqual({
-      enabled: true,
-      presets: ['a04'],
-      services: ['premiumize'],
-    });
+    const all = presets(template);
+    expect(all.find((p) => p.type === 'mediafusion')).toBeUndefined();
+    expect(all.find((p) => p.instanceId === 'a04')).toBeUndefined();
+    expect(template.serviceWrap).toBeUndefined();
   });
 
   it('carries no catalog modifications for dropped addons', () => {

@@ -74,7 +74,6 @@ One URL per member — same shared config, their own Premiumize key:
 | --- | --- |
 | `KEVBOX_MEMBERS` | Member allowlist (comma-separated). Required — kevbox is off without it |
 | `KEVBOX_TEMPLATE_PATH` | Optional override of the template location (default `<cwd>/kevbox.config.json`; the compose file bind-mounts it to `/app/kevbox.config.json`) |
-| `KEVBOX_MEDIAFUSION_URL` | Base URL of the self-hosted MediaFusion (`http://mediafusion:8000`, docker-internal — never public) — substituted into the template's `mediafusion` preset |
 
 The shipped template needs **no secrets** — MediaFlow proxy and RPDB posters are
 disabled (Premiumize links aren't IP-locked, so MediaFlow only adds VPS
@@ -100,27 +99,39 @@ The compose project also runs the sourcing layer (design + plan in
 | --- | --- | --- |
 | `prowlarr` (+ `flaresolverr`) | Indexer manager (live torrent-site search, Cloudflare cleared by FlareSolverr) | Kevbox builtin via `BUILTIN_PROWLARR_URL` / `BUILTIN_PROWLARR_API_KEY`; UI via SSH tunnel to `127.0.0.1:9696` |
 | `zilean` (+ `zilean-postgres`) | DMM cached-hash index (Torznab) | `BUILTIN_ZILEAN_URL=http://zilean:8181` |
-| `mediafusion` api+worker (+ `mediafusion-postgres`, `mediafusion-redis`) | Self-hosted MediaFusion, scraping our Prowlarr + Zilean only; returns raw infoHashes that kevbox resolves via Premiumize (template `serviceWrap`) | template `url` = `${KEVBOX_MEDIAFUSION_URL}` = `http://mediafusion:8000` (docker-internal, never exposed); ops/debug via SSH tunnel to `127.0.0.1:8000` |
 
 External fallbacks kept in the template: Torrentio, StremThru Torz, Peerflix,
 TorrentsDB. Dropped: Comet, Sootio, and the in-process Knaben/TorrentGalaxy
 builtins (now Prowlarr indexers).
 
+**MediaFusion was dropped** (2026-06-11): rev-2 disabled its bespoke scrapers
+for VPS-IP safety and pointed it only at our own Prowlarr + Zilean — which
+kevbox already queries directly — so it was redundant, and in
+`useCachedResultsOnly` mode its DB never warmed from family requests (it
+contributed zero streams). The `mediafusion` preset, the `serviceWrap` block,
+and the four `mediafusion*` containers were removed.
+
+**Prowlarr indexer set:** TPB, EZTV, RuTor, Knaben, Nyaa.si, YTS. Deliberately
+excluded — `1337x` (FlareSolverr does a ~20s CF solve per page → pins the
+aggregated search at 60s+), and `LimeTorrents`/`TorrentDownload` (return no
+infoHash, only a `.torrent` link the builtin must download to hash it; those
+fetches hang ~30s and block the whole Prowlarr addon). See
+`deploy/prowlarr-setup-indexers.py`.
+
 Additional `.env` vars on the VPS (names only — values never in git):
 `BUILTIN_PROWLARR_URL`, `BUILTIN_PROWLARR_API_KEY`, `PROWLARR_API_KEY` (same
-value, consumed by MediaFusion/compose), `BUILTIN_ZILEAN_URL`,
-`ZILEAN_POSTGRES_PASSWORD`, `KEVBOX_MEDIAFUSION_URL`, `MEDIAFUSION_SECRET_KEY`,
-`MEDIAFUSION_API_PASSWORD` (dual-consumed: AIOStreams core reads this exact
-env name and sends it as `api_password` on every mediafusion-preset request —
-both consumers must share one value), `MEDIAFUSION_POSTGRES_PASSWORD`.
+value), `PROWLARR_UI_PASSWORD` (Forms login, user `kevin`; UI is loopback-only
+so login is bypassed for the tunnel), `BUILTIN_ZILEAN_URL`,
+`ZILEAN_POSTGRES_PASSWORD`.
 
 Ops notes:
 - After a host reboot, restart kevbox once Prowlarr is healthy — the builtin
   fetches preconfigured indexers once at boot with no retry (streaming still
   works via live fallback; only the configure-UI indexer picker degrades).
-- Backups: zilean/mediafusion Postgres are deliberately not backed up
-  (re-importable from public sources); `prowlarr-config` is the one
-  unrecoverable volume — snapshot it after indexer changes (plan Task 6 Step 8).
+- Backups: zilean Postgres is deliberately not backed up (re-importable from
+  public sources); `prowlarr-config` is the one unrecoverable volume — snapshot
+  it after indexer changes (`docker run --rm -v aiostreams_prowlarr-config:/config
+  -v /opt/kevbox/backups:/backup alpine tar czf /backup/prowlarr-config-$(date +%F).tgz -C /config .`).
 
 ## VPS environment (.env on the server, never in git)
 

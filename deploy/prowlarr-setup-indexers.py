@@ -42,17 +42,17 @@ def req(method, path, body=None):
 # (label, [match keywords on definitionName/name], cf?)
 # NOTE: 1337x intentionally omitted — via FlareSolverr it does a ~20s Chromium
 # Cloudflare solve PER PAGE, pinning the aggregated search to 60-70s and blowing
-# the kevbox prowlarr preset's 15s budget on every request. TPB + Knaben + RuTor
-# cover the overlap. Re-add only if its CF behavior improves.
+# the kevbox prowlarr preset's 15s budget on every request.
+# NOTE: LimeTorrents + TorrentDownload also omitted — they return NO infoHash
+# (only a .torrent downloadUrl), so the builtin tries to download each .torrent
+# to extract the hash; those fetches hang ~30s and the builtin awaits ALL of
+# them, blowing the budget and making the WHOLE Prowlarr addon return nothing.
+# The remaining 6 (TPB, EZTV, RuTor, Knaben, Nyaa, YTS) all return infoHashes.
 TARGETS = [
     ("The Pirate Bay",   ["thepiratebay"],     False),
     ("YTS",              ["yts"],              False),
     ("EZTV",             ["eztv"],             False),
-    ("LimeTorrents",     ["limetorrents"],     False),
     ("Nyaa.si",          ["nyaasi"],           False),
-    ("BitSearch",        ["bitsearch"],        False),
-    ("Torlock",          ["torlock"],          False),
-    ("TorrentDownload",  ["torrentdownload"],  False),
     ("RuTor",            ["rutor"],            False),
     ("Knaben",           ["knaben"],           False),
     ("TorrentGalaxy",    ["torrentgalaxyclone", "torrentgalaxy"], True),

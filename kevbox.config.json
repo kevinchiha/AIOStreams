@@ -295,28 +295,6 @@
       }
     },
     {
-      "type": "mediafusion",
-      "instanceId": "a04",
-      "enabled": true,
-      "options": {
-        "name": "MediaFusion",
-        "timeout": 10000,
-        "url": "${KEVBOX_MEDIAFUSION_URL}",
-        "resources": [
-          "stream"
-        ],
-        "useCachedResultsOnly": true,
-        "enableWatchlistCatalogs": false,
-        "downloadViaBrowser": false,
-        "contributorStreams": false,
-        "certificationLevelsFilter": [],
-        "nudityFilter": [],
-        "services": [
-          "premiumize"
-        ]
-      }
-    },
-    {
       "type": "stremthruTorz",
       "instanceId": "cf3",
       "enabled": true,
@@ -447,11 +425,6 @@
       "addonName": "TorrentsDB"
     }
   ],
-  "serviceWrap": {
-    "enabled": true,
-    "presets": ["a04"],
-    "services": ["premiumize"]
-  },
   "cacheAndPlay": {
     "streamTypes": [
       "usenet"

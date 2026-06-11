@@ -41,15 +41,13 @@ print_state() {
 if [ "${1:-}" = "--check" ]; then print_state; exit 0; fi
 
 flip_and_import() {
-  log "COMPLETE — flipping kevbox onto local Zilean + triggering MF IMDb import"
+  log "COMPLETE — flipping kevbox onto local Zilean"
   if ! grep -q '^BUILTIN_ZILEAN_URL=' .env; then
     echo "BUILTIN_ZILEAN_URL=http://zilean:8181" >> .env
     log "added BUILTIN_ZILEAN_URL=http://zilean:8181 to .env"
   fi
   $COMPOSE up -d --force-recreate kevbox >>"$LOG" 2>&1
   log "kevbox recreated (now using local Zilean)"
-  docker exec mediafusion-worker /usr/local/bin/mediafusion-worker --run-job imdb_dataset_import >>"$LOG" 2>&1 &
-  log "triggered MediaFusion IMDb dataset import (background)"
   log "DONE. Operator: only the real Premiumize playback test remains."
 }
 
