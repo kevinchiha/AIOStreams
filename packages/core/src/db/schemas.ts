@@ -129,6 +129,17 @@ const ResultLimitOptions = z.object({
   indexer: z.number().min(1).optional(),
   releaseGroup: z.number().min(1).optional(),
   mode: z.enum(['independent', 'conjunctive']).optional(),
+  // Keep the largest `perBand` streams per `bandSizeBytes`-wide size band, per
+  // addon x resolution (streams >= `maxBytes` are dropped). Supersedes the
+  // per-category count caps above when enabled; `global` still applies.
+  sizeBuckets: z
+    .object({
+      enabled: z.boolean().optional(),
+      bandSizeBytes: z.number().min(1),
+      maxBytes: z.number().min(1),
+      perBand: z.number().min(1).optional(),
+    })
+    .optional(),
 });
 
 // const SizeFilter = z.object({

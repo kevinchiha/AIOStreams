@@ -1,6 +1,7 @@
 import { ParsedStream, UserData } from '../db/schemas.js';
 import { createLogger } from '../utils/index.js';
 import { shouldPassthroughStage } from './utils.js';
+import { selectSizeBucketRemovals } from './sizeBuckets.js';
 
 const logger = createLogger('limiter');
 
@@ -26,6 +27,7 @@ class StreamLimiter {
       streamType,
       service,
       mode,
+      sizeBuckets,
     } = this.userData.resultLimits;
 
     const start = Date.now();
@@ -35,7 +37,18 @@ class StreamLimiter {
     // Keep track of which indexes to remove
     const indexesToRemove = new Set<number>();
 
-    if (isConjunctive) {
+    if (sizeBuckets?.enabled) {
+      // Size-bucket mode: keep the largest stream per size band, per addon x
+      // resolution (see sizeBuckets.ts). Supersedes the per-category count caps;
+      // `global` still applies as an overall ceiling.
+      for (const index of selectSizeBucketRemovals(
+        streams,
+        sizeBuckets,
+        global
+      )) {
+        indexesToRemove.add(index);
+      }
+    } else if (isConjunctive) {
       // Conjunctive mode: combine enabled category limits into a composite key.
       // Each unique combination gets min(enabled limits) as its cap.
       const enabledLimits: number[] = [];
