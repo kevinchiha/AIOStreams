@@ -214,7 +214,7 @@ export class ProwlarrAddon extends BaseDebridAddon<ProwlarrAddonConfig> {
     // a foreign-language query) gated the whole search to Prowlarr's ~12s HTTP
     // ceiling. Now a laggard simply times out and drops; the fast indexers'
     // results are returned immediately.
-    const PER_INDEXER_SEARCH_TIMEOUT = 3200;
+    const PER_INDEXER_SEARCH_TIMEOUT = 1600;
     const searchPromises = queries.flatMap((q) =>
       chosenIndexers.map((indexer) =>
         queryLimit(async () => {
