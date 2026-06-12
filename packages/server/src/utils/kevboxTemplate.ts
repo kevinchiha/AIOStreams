@@ -11,12 +11,74 @@ export function kevboxTemplatePath(): string {
   );
 }
 
+/** Member name rule (mirrors the AIOStreams allowlist + kevbox-admin). */
+const KEVBOX_NAME_REGEX = /^[a-z0-9._+-]{1,64}$/;
+
+interface MembersFileEntry {
+  mtimeMs: number;
+  size: number;
+  names: string[];
+}
+/** mtime+size cache, keyed by file path (mirrors loadKevboxTemplate's cache). */
+const membersFileCache = new Map<string, MembersFileEntry>();
+
 /**
- * The member allowlist, parsed from KEVBOX_MEMBERS (comma-separated, trimmed,
- * blanks dropped). Empty array = kevbox disabled on this instance. Kept here
- * (core-free) so it is unit-testable without booting the @aiostreams/core env.
+ * Resolve the allowlist from KEVBOX_MEMBERS_FILE, or null to signal "no usable file"
+ * (caller then falls back to KEVBOX_MEMBERS env). A present file is "usable" only if it
+ * parses to a NON-EMPTY array of names; missing / 0-byte / whitespace / malformed / `[]`
+ * all return null so the file source can never by itself disable kevbox (spec §7, C3).
+ * Parse errors are caught + logged, never thrown into the request/boot path.
+ */
+function kevboxMembersFromFile(env: NodeJS.ProcessEnv): string[] | null {
+  const filePath = env.KEVBOX_MEMBERS_FILE;
+  if (!filePath || !existsSync(filePath)) return null;
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(filePath);
+  } catch {
+    return null;
+  }
+  const cached = membersFileCache.get(filePath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached.names.length > 0 ? cached.names : null;
+  }
+  let names: string[];
+  try {
+    const raw = readFileSync(filePath, 'utf-8').trim();
+    if (raw === '') return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    names = parsed
+      .filter((n): n is string => typeof n === 'string')
+      .map((n) => n.trim())
+      .filter((n) => {
+        if (KEVBOX_NAME_REGEX.test(n)) return true;
+        // eslint-disable-next-line no-console
+        console.warn(`kevbox: dropping invalid members.json entry "${n}"`);
+        return false;
+      });
+  } catch (error: unknown) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `kevbox: members.json at ${filePath} unreadable/not-JSON, falling back to env: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+  membersFileCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, names });
+  return names.length > 0 ? names : null;
+}
+
+/**
+ * The member allowlist. Resolution precedence (spec §7): a usable members.json file
+ * (KEVBOX_MEMBERS_FILE → non-empty array) wins; otherwise fall back to KEVBOX_MEMBERS
+ * (comma-separated, trimmed, blanks dropped). Empty resolved array = kevbox disabled.
+ * Kept core-free so it is unit-testable without booting the @aiostreams/core env.
  */
 export function kevboxMembers(env: NodeJS.ProcessEnv = process.env): string[] {
+  const fromFile = kevboxMembersFromFile(env);
+  if (fromFile) return fromFile;
   return (env.KEVBOX_MEMBERS ?? '')
     .split(',')
     .map((member) => member.trim())

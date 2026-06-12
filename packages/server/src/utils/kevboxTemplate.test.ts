@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, utimesSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -146,5 +146,98 @@ describe('kevboxMembers', () => {
     expect(kevboxMembers({})).toEqual([]);
     expect(kevboxMembers({ KEVBOX_MEMBERS: '' })).toEqual([]);
     expect(kevboxMembers({ KEVBOX_MEMBERS: '   ' })).toEqual([]);
+  });
+});
+
+describe('kevboxMembers file source', () => {
+  const writeMembers = (content: string): string => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'kevbox-members-'));
+    const file = path.join(dir, 'members.json');
+    writeFileSync(file, content);
+    return file;
+  };
+
+  it('uses a non-empty members.json file when KEVBOX_MEMBERS_FILE is set', () => {
+    const file = writeMembers('["alice","bob"]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: 'zzz' })).toEqual([
+      'alice',
+      'bob',
+    ]);
+  });
+
+  it('falls back to KEVBOX_MEMBERS env when the file is missing', () => {
+    expect(
+      kevboxMembers({ KEVBOX_MEMBERS_FILE: '/no/such/members.json', KEVBOX_MEMBERS: 'a,b' }),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('falls back to env when the file is an empty array', () => {
+    const file = writeMembers('[]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: 'a' })).toEqual(['a']);
+  });
+
+  it('falls back to env when the file is 0-byte / whitespace', () => {
+    const file = writeMembers('   \n');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: 'a' })).toEqual(['a']);
+  });
+
+  it('falls back to env on malformed JSON (no throw)', () => {
+    const file = writeMembers('{not json');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: 'a' })).toEqual(['a']);
+  });
+
+  it('drops invalid names but keeps valid ones', () => {
+    const file = writeMembers('["good","BAD UPPER","ok.name","has space"]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file })).toEqual(['good', 'ok.name']);
+  });
+
+  it('reloads when the file changes (mtime or size cache-bust)', () => {
+    const file = writeMembers('["one"]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file })).toEqual(['one']);
+    writeFileSync(file, '["one","two"]');
+    const future = Date.now() / 1000 + 10;
+    utimesSync(file, future, future);
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file })).toEqual(['one', 'two']);
+  });
+
+  it('ignores KEVBOX_MEMBERS_FILE when unset (pure env behavior)', () => {
+    expect(kevboxMembers({ KEVBOX_MEMBERS: 'x , y , ' })).toEqual(['x', 'y']);
+  });
+
+  it('ignores a sibling temp file (reads only members.json)', () => {
+    // kevbox-admin writes a sibling `.tmp-<pid>-members.json` then atomic-renames it
+    // onto members.json. A leftover/in-progress temp sibling must never be picked up —
+    // KEVBOX_MEMBERS_FILE points at members.json exactly, so only that name is read.
+    const dir = mkdtempSync(path.join(tmpdir(), 'kevbox-members-'));
+    const file = path.join(dir, 'members.json');
+    writeFileSync(file, '["alice"]');
+    writeFileSync(path.join(dir, '.tmp-12345-members.json'), '["mallory"]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: 'zzz' })).toEqual([
+      'alice',
+    ]);
+  });
+
+  it('boot fail-loud: empty RESOLVED list after file→env fallback yields []', () => {
+    // Spec §7 fail-loud: when neither the file nor env yields any name, the resolved
+    // list is empty (server.ts then refuses to boot). Empty file ([]) falls back to env,
+    // and env is also empty → kevboxMembers() returns [] (not a partial/stale list).
+    const file = writeMembers('[]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: '' })).toEqual([]);
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file, KEVBOX_MEMBERS: '   ,  , ' })).toEqual(
+      [],
+    );
+  });
+
+  it('reloads on a SIZE-ONLY change (same mtime, different length)', () => {
+    // Exercises the `cached.size === stat.size` cache term specifically: force the SAME
+    // mtime back onto the file after writing different-length content. If the size check
+    // were dropped, the stale cached names would be returned and this test would fail.
+    const file = writeMembers('["one"]');
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file })).toEqual(['one']);
+    const { mtimeMs } = statSync(file); // capture the cached mtime
+    writeFileSync(file, '["one","two"]'); // longer content → different size
+    const sameMtimeSec = mtimeMs / 1000;
+    utimesSync(file, sameMtimeSec, sameMtimeSec); // force mtime back to the cached value
+    expect(kevboxMembers({ KEVBOX_MEMBERS_FILE: file })).toEqual(['one', 'two']);
   });
 });
