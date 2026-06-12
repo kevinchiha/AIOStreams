@@ -13,8 +13,8 @@ const pool = (...addons: Array<[string, number]>): ParsedStream[] =>
   );
 
 // distinctAddonCount() backs the kevbox fast-exit clause. The live condition is
-// `countAddons(totalStreams, 3) >= 3` — stop only once 3 distinct addons have
-// EACH returned at least 3 streams (not once 3 addons merely finished, which
+// `countAddons(totalStreams, 6) >= 3` — stop only once 3 distinct addons have
+// EACH returned at least 6 streams (not once 3 addons merely finished, which
 // `count(queriedAddons)` wrongly counted, including addons that returned nothing).
 describe('distinctAddonCount()', () => {
   describe('default (minPerAddon = 1) — any contribution counts', () => {
@@ -54,6 +54,20 @@ describe('distinctAddonCount()', () => {
 
     it('many streams from one addon is still just one addon', () => {
       expect(distinctAddonCount(pool(['A', 20]), 3)).toBe(1);
+    });
+  });
+
+  describe('minPerAddon = 6 — the live kevbox bar', () => {
+    it('counts only the 3+ addons that each returned 6+ streams', () => {
+      // A=6 (ok), B=9 (ok), C=6 (ok), D=5 (no) -> 3 qualifying addons.
+      expect(
+        distinctAddonCount(pool(['A', 6], ['B', 9], ['C', 6], ['D', 5]), 6)
+      ).toBe(3);
+    });
+
+    it('a rich single addon (e.g. one indexer) does not satisfy the bar alone', () => {
+      // 30 streams but all one addon -> 1 < 3, fast-exit must NOT trip.
+      expect(distinctAddonCount(pool(['A', 30]), 6)).toBe(1);
     });
   });
 });

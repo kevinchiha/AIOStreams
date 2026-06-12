@@ -202,7 +202,7 @@
   },
   "dynamicAddonFetching": {
     "enabled": true,
-    "condition": "countAddons(totalStreams, 3) >= 3 or totalTimeTaken >= 16000"
+    "condition": "countAddons(totalStreams, 6) >= 3 or totalTimeTaken >= 16000"
   },
   "autoPlay": {
     "attributes": [
