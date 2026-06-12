@@ -10,6 +10,7 @@ import { formatZodError } from '../utils/config.js';
 import { ZodError } from 'zod';
 import { PASSTHROUGH_STAGES } from '../utils/constants.js';
 import { parseBitrate } from './utils.js';
+import { distinctAddonCount } from './addonCount.js';
 import { createLogger } from '../logging/logger.js';
 import { ExpressionContext } from '../streams/context.js';
 import { formRegexFromKeywordsSync } from '../utils/regex.js';
@@ -1106,6 +1107,32 @@ export abstract class StreamExpressionEngine {
         throw new Error('You must provide one or more addon string parameters');
       }
       return streams.filter((stream) => addons.includes(stream.addon.name));
+    };
+
+    // Number of DISTINCT addons that actually contributed streams to the input
+    // array. Unlike `count(queriedAddons)` (which counts addons that *finished*,
+    // including ones that returned nothing), this only counts addons present in
+    // the stream pool — i.e. addons that genuinely returned results.
+    //
+    // Optional second arg `minPerAddon` (default 1) only counts addons that
+    // contributed at least that many streams, e.g. `countAddons(totalStreams, 3)`
+    // = "addons that each returned 3 or more streams".
+    this.parser.functions.countAddons = function (
+      streams: ParsedStream[],
+      minPerAddon?: number
+    ) {
+      if (!Array.isArray(streams) || streams.some((stream) => !stream.type)) {
+        throw new Error('Your streams input must be an array of streams');
+      }
+      if (
+        minPerAddon !== undefined &&
+        (typeof minPerAddon !== 'number' || minPerAddon < 1)
+      ) {
+        throw new Error(
+          'The second argument to countAddons must be a positive number'
+        );
+      }
+      return distinctAddonCount(streams, minPerAddon);
     };
 
     this.parser.functions.library = function (streams: ParsedStream[]) {
