@@ -94,6 +94,7 @@ services:
     environment:
       Zilean__Database__ConnectionString: "Host=zilean-postgres;Port=5432;Database=zilean;Username=postgres;Password=${ZILEAN_POSTGRES_PASSWORD};Include Error Detail=true;Timeout=30;CommandTimeout=3600;"
       Zilean__Dmm__EnableScraping: "true"
+      Zilean__Dmm__ScrapeSchedule: "0 3 * * *"     # daily 03:00, not hourly default: each run re-downloads the FULL 1.46GB DMM zipball (no incremental fetch upstream); hourly pulls earn GitHub 429s and stall ingestion
       Zilean__Torznab__EnableEndpoint: "true"      # AIOStreams' zilean preset consumes <url>/torznab/api
       Zilean__Imdb__EnableImportMatching: "true"   # required: AIOStreams prefers imdbid= torznab searches
       Zilean__Imdb__UseLucene: "false"             # true would cost ~3 GB extra RAM during resyncs
