@@ -1,0 +1,53 @@
+# Kevbox — self-hosted "AI Search" Stremio addon (github.com/itcon-pty-au/stremio-ai-search).
+# Replaces the public https://stremio.itcon.au/aisearch instance.
+#
+# Fully BYOK / stateless: the server holds NO provider API keys. Users enter their
+# OpenRouter + TMDB keys at /configure; those are AES-encrypted with ENCRYPTION_KEY
+# and embedded in the install URL. Nothing sensitive is written to disk.
+#
+# No upstream image is published (GHCR/Docker Hub are empty), so we build from a
+# PINNED commit of upstream main using its own root Dockerfile (node:23).
+# Update = bump the #<sha> below (build.context AND image tag), then:
+#   docker compose -f compose.aisearch.yaml up -d --build
+services:
+  aisearch:
+    # Pinned to itcon-pty-au/stremio-ai-search main @ 7172139 (last push 2026-06-19).
+    # git-context build: Docker clones this exact ref and builds its Dockerfile.
+    # Repo is unmaintained + has no release tags — pin deliberately, don't follow main.
+    build:
+      context: https://github.com/itcon-pty-au/stremio-ai-search.git#7172139c9c137d5fdcfc12f9d928b93268e1114f
+    image: aisearch:7172139
+    container_name: aisearch
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:7000:7000   # localhost-only; nginx (aisearch.kevbox.dev) proxies to this
+    env_file:
+      - .env
+    environment:
+      # Same IPv6 trap as the kevbox service: the host has no IPv6 egress but the
+      # container gets a link-local AAAA, so Node's fetch tries IPv6 first and HANGS
+      # (EAI_AGAIN / timeout) on every OpenRouter + TMDB call. Force IPv4-first.
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+    # Stateless by default — user config lives in the install URL, not the DB. The
+    # app's embedded SQLite only persists Trakt OAuth tokens + the response cache, so
+    # mount a volume ONLY if you enable Trakt. Confirm the DB path in upstream
+    # server.js before uncommenting (it writes relative to the app workdir).
+    # volumes:
+    #   - aisearch-data:/usr/src/app/data
+    healthcheck:
+      # Dependency-free liveness: the server is up if it answers on :7000 with <500.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:7000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+# volumes:
+#   aisearch-data:
