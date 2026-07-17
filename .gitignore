@@ -13,3 +13,6 @@ data/
 graphify-out/
 .DS_Store
 aiostreams-config-*.json
+# Kimi Code local data
+.kimi-code/memory/
+.kimi-code/local.toml
