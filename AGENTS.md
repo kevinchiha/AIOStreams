@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Kimi Code when working with code in this repository.
+This file provides guidance to coding agents working with code in this repository.
 
 ## Project
 
@@ -76,11 +76,3 @@ The frontend uses rsbuild (not Vite/webpack directly) — `pnpm -F frontend dev`
 - Cross-package imports use the workspace name: `from '@aiostreams/core'`.
 - Logger: `createLogger('<scope>')` from `@aiostreams/core` (Pino under the hood); do not `console.log`.
 - Errors that prevent startup should be thrown as `ConfigStartupError` — `server.ts` prints those without a stack trace.
-
-
-# Durable notes (ported auto-memory)
-Your long-term notes for this project live in `.kimi-code/memory/` — one fact per
-file, indexed in `.kimi-code/memory/MEMORY.md`. Read the index at session start and
-open any notes relevant to the current task. When you learn something durable about
-this project, write it as a new note file and add it to `MEMORY.md`. (Ported from
-Claude Code's auto-memory.)
