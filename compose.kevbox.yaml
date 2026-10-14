@@ -3,6 +3,10 @@ services:
     build: .
     container_name: kevbox
     restart: unless-stopped
+    # In-memory caches only drop an expired entry when that key is read again, so
+    # RSS creeps up for weeks (peak 1.4 GB by 2026-10-14). The cap stops it taking
+    # the whole VPS; hitting it restarts the container.
+    mem_limit: 2g
     ports:
       - 127.0.0.1:3127:3000
     env_file:
@@ -48,6 +52,7 @@ services:
     image: muniftanjim/stremthru:latest
     container_name: stremthru
     restart: unless-stopped
+    mem_limit: 1536m       # peak ~1 GB as of 2026-10-14
     environment:
       - "STREMTHRU_STORE_CONTENT_PROXY=*:false"
       # We use StremThru ONLY as a Premiumize store proxy (checkMagnet +
@@ -71,6 +76,7 @@ services:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
     restart: unless-stopped
+    mem_limit: 768m        # peak ~350 MB as of 2026-10-14
     environment:
       - PUID=1000
       - PGID=1000
