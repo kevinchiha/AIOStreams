@@ -141,7 +141,11 @@ services:
       - zilean-postgres-data:/var/lib/postgresql/data/pgdata
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      # Every 30 s, every 2 s for the first minute after a start (2026-10-18): fewer checks
+      # through Docker, and zilean, which waits for this one, still starts quickly.
+      interval: 30s
+      start_period: 60s
+      start_interval: 2s
       timeout: 5s
       retries: 5
     logging:
